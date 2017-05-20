@@ -12,6 +12,7 @@ my %XML=(lt => '<',
 
 
 sub parse{
+    shift;
     my $text=shift;
     my %header=();
     $text=~s/\r//g;
@@ -46,6 +47,7 @@ sub parsebody{
 	$arg=~s/\s+$//g;
 
 	my $rest=($stop>-1)?substr($body,$descend?length($tag)+3+$stop:$stop):"";
+	$rest=~s/^<\/$tag>//;
 	my @ret=("\L$tag",$descend?[&parsebody($arg)]:$arg);
 	if($rest){
 	    return (@ret,&parsebody($rest));
