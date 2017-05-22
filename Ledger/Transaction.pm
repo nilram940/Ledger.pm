@@ -1,5 +1,10 @@
 package Ledger::Transaction;
-
+use strict;
+use warnings;
+use Ledger::Posting;
+use Date::Parse;
+use POSIX qw(strftime);
+    
 sub new{
     my $class=shift;
     my $self={ date  => 0,
@@ -7,7 +12,39 @@ sub new{
 	       payee => "",
 	       code  => "",
 	       note  => "",
-	       postings => []}
+	       postings => []};
     bless $self, $class;
     return $self;
 }
+
+sub addPosting{
+    my $self=shift;
+    push @{$self->{postings}}, shift;
+}
+
+sub fromXMLstruct{
+    my $self=shift;
+    my $xml=shift;
+    @{$self}{qw (state payee code note)}=
+	@{$xml}{qw(state payee code note)};
+    $self->{date}=str2time($xml->{date});
+    my $postings=$xml->{postings}->{posting};
+    $self->{postings}=[map {Ledger::Posting->new()->fromXMLstruct($_)} (@{$postings})];
+    return $self;
+}
+	
+	
+sub toString{
+    my $self=shift;
+    my $str=strftime('%Y/%m/%d', localtime $self->{date});
+    $str.=($self->{state} eq "cleared")?" * ":"   ";
+    $str.='('.$self->{code}.') ' if $self->{code};
+    $str.=$self->{payee};
+    $str.='     ;'.$self->{note} if ($self->{note});
+    $str.="\n";
+    $str.=join("\n",map {$_->toString} (@{$self->{postings}}));
+    return $str;
+}
+
+
+1;
