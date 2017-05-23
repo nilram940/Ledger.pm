@@ -7,19 +7,21 @@ use POSIX qw(strftime);
     
 sub new{
     my $class=shift;
-    my $self={ date  => 0,
-	       state => "",
-	       payee => "",
-	       code  => "",
-	       note  => "",
-	       postings => []};
+    # my $self={ date  => 0,
+    # 	       state => "",
+    # 	       payee => "",
+    # 	       code  => "",
+    # 	       note  => "",
+    # 	       postings => []};
+    my $self={postings => []};
+    @{$self}{qw(date state code payee note)}=@_;
     bless $self, $class;
     return $self;
 }
 
 sub addPosting{
     my $self=shift;
-    push @{$self->{postings}}, shift;
+    push @{$self->{postings}}, new Ledger::Posting(@_);
 }
 
 sub fromXMLstruct{
@@ -46,5 +48,9 @@ sub toString{
     return $str;
 }
 
+sub balance{
+    my $self=shift;
+    my $hints=shift;
+}
 
 1;

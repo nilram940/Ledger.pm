@@ -12,7 +12,6 @@ my %XML=(lt => '<',
 
 
 sub parse{
-    shift;
     my $text=shift;
     my %header=();
     $text=~s/\r//g;

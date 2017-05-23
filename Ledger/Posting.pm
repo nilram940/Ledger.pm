@@ -6,6 +6,7 @@ sub new{
     my $class=shift;
     my $self={};
     @{$self}{qw(account quantity commodity cost note)}=@_;
+    $self->{commodity}||='$';
     
     # my $self={ account   => "",
     # 	       amount    => "",
