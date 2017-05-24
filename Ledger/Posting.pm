@@ -19,6 +19,11 @@ sub new{
     return $self;
 }
 
+sub cost{
+    my $self=shift;
+    return $self->{commodity} eq '$' ? $self->{quantity}:$self->{cost};
+}
+
 sub fromXMLstruct{
     my $self=shift;
     my $xml=shift;
@@ -33,11 +38,13 @@ sub fromXMLstruct{
 sub toString{
     my $self=shift;
     my $str=sprintf('     %-40s  ',$self->{account});
-    if ($self->{commodity} eq '$'){
-	$str.=sprintf('$%0.2f',$self->{quantity});
-    }else{
-	$str.=$self->{quantity}.' '.$self->{commodity}.
-	    ' @@ $'.sprintf('%0.2f',$self->{cost});
+    if ($self->{quantity}){
+	if ($self->{commodity} eq '$'){
+	    $str.=sprintf('$%0.2f',$self->{quantity});
+	}else{
+	    $str.=$self->{quantity}.' '.$self->{commodity}.
+		' @@ $'.sprintf('%0.2f',$self->{cost});
+	}
     }
     $str.=' ; '.$self->{note} if $self->{note};
     return $str;

@@ -21,9 +21,34 @@ sub new{
 
 sub addPosting{
     my $self=shift;
-    push @{$self->{postings}}, new Ledger::Posting(@_);
+    my $posting;
+    if (ref $_[0]){
+	$posting=shift;
+    }else{
+	$posting=new Ledger::Posting(@_);
+    }
+    push @{$self->{postings}},$posting; 
 }
 
+sub getPosting{
+    my $self=shift;
+    my $num=shift;
+    return $self->{postings}->[$num];
+}
+
+sub setPosting{
+    my $self=shift;
+    my $num=shift;
+    my $posting;
+    if (ref $_[0]){
+	$posting=shift;
+    }else{
+	$posting=new Ledger::Posting(@_);
+    }
+    $self->{postings}->[$num]=$posting; 
+}
+    
+    
 sub fromXMLstruct{
     my $self=shift;
     my $xml=shift;
@@ -51,6 +76,23 @@ sub toString{
 sub balance{
     my $self=shift;
     my $hints=shift;
+    my ($account,$prob)=&finddest($self->{postings}->[0]->{account},
+				  $self->{payee},
+				  $hints->{table});
+    $self->addPosting($account,undef,undef,undef,"INFO: UNKNOWN ($prob)")
+	
+	
+}
+
+sub finddest{
+    my ($account,$desc,$table)=@_;
+    my $dcount=$table->{$account}->{$desc}||
+	$table->{$account}->{'@@account default@@'};
+    my $dest=(sort {$dcount->{$b} <=> $dcount->{$a}} 
+	      grep (!/total/, keys %{$dcount}))[0];
+
+    my $prob=$dest?sprintf("%.2f%%",100*$dcount->{$dest}/$dcount->{total}):0;
+    return ($dest,$prob);
 }
 
 1;

@@ -77,7 +77,7 @@ sub dump{
 
 sub stmttrn{
     my ($arg,$data)=@_;
-    return if $data->{type} eq 'inv';
+    return if $data->{type};# eq 'inv';
     my %tran=(@{$arg->[1]});
     $data->{transactions}||=[];
     my %rtran;
