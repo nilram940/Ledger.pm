@@ -6,7 +6,7 @@ use Ledger::OFX;
 
 sub new{
     my $class=shift;
-    my $self={ transactions => [], accounts=>{} };
+    my $self={ transactions => [], balance=>[] };
     bless $self, $class;
     return $self;
 }
@@ -67,9 +67,23 @@ sub fromOFX{
 	}
 	push @{$self->{transactions}}, $transaction if $transaction;
 
+
+    }
+    my $payee=(split(/:/, $account))[-1];
+    $payee.=' Balance';
+    my $balance=$ofxdat->{balance};
+    
+    my $transaction=new Ledger::Transaction
+	($balance->{date},"cleared",undef,$payee);
+
+    my $commodity;
+    if ($balance->{commodity}){
+	$commodity=$ofxdat->{ticker}->{$balance->{commodity}};
     }
 
-
+    $transaction->addPosting($account,$balance->{quantity},$commodity,'BAL');
+    push @{$self->{balance}},$transaction;
+	
     return $self;
     
 }
@@ -117,7 +131,7 @@ sub getaccount{
 
 sub toString{
     my $self=shift;
-    my $str=join("\n\n",map {$_->toString} (sort {$a->{date} <=> $b->{date}} @{$self->{transactions}}));
+    my $str=join("\n\n",map {$_->toString} (sort {$a->{date} <=> $b->{date}} @{$self->{transactions}}),@{$self->{balance}});
     $str.="\n\n";
     return $str;
 }

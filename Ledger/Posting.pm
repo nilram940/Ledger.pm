@@ -37,13 +37,17 @@ sub fromXMLstruct{
 
 sub toString{
     my $self=shift;
-    my $str=sprintf('     %-40s  ',$self->{account});
+    my $bal=($self->{cost} eq 'BAL');
+    my $str=$bal?sprintf('     %-40s   = ','['.$self->{account}.']'):
+	sprintf('     %-40s   ',$self->{account});
     if ($self->{quantity}){
 	if ($self->{commodity} eq '$'){
 	    $str.=sprintf('$%0.2f',$self->{quantity});
 	}else{
-	    $str.=$self->{quantity}.' '.$self->{commodity}.
-		' @@ $'.sprintf('%0.2f',$self->{cost});
+	    $str.=$self->{quantity}.' '.$self->{commodity};
+	    if ($self->{cost} && ! $bal){
+		$str.=' @@ $'.sprintf('%0.2f',$self->{cost});
+	    }
 	}
     }
     $str.=' ; '.$self->{note} if $self->{note};
