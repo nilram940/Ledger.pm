@@ -28,12 +28,18 @@ sub addPosting{
 	$posting=new Ledger::Posting(@_);
     }
     push @{$self->{postings}},$posting; 
+    return $posting;
 }
 
 sub getPosting{
     my $self=shift;
     my $num=shift;
     return $self->{postings}->[$num];
+}
+
+sub getPostings{
+    my $self=shift;
+    return @{$self->{postings}};
 }
 
 sub setPosting{

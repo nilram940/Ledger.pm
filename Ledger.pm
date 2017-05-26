@@ -6,9 +6,24 @@ use Ledger::OFX;
 
 sub new{
     my $class=shift;
-    my $self={ transactions => [], balance=>[] };
+    my $self={ transactions => [], 
+	       balance=>[], 
+	       table=>{}, 
+	       id=>{}};
     bless $self, $class;
     return $self;
+}
+
+sub addTransaction{
+    my $self=shift;
+    my $transaction;
+    if (ref $_[0]){
+	$transaction=shift;
+    }else{
+	$transaction=new Ledger::Transaction(@_);
+    }
+    push @{$self->{transactions}},$transaction;
+    return $transaction;
 }
 
 sub fromXMLstruct{
