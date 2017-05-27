@@ -1,6 +1,7 @@
 package Ledger::OFX;
 use warnings;
 use strict;
+use Data::Dumper;
 use Date::Parse;
 
 my %XML=(lt => '<',
@@ -19,6 +20,9 @@ my %HANDLER=(
     'invpos' => \&invpos
 );
 
+my $xml;
+my @xml;
+my $data;
 
 sub parse{
     my $text=shift;
@@ -27,47 +31,116 @@ sub parse{
     $text=~s/\r//g;
     my ($header,$body)=split(/\n\n/,$text,2);
 
-    $body=~s/^\s+//;
-    $body=~s/\s+$//;
-    $body=~s/>\s+/>/g;
-    &parsebody($body,$dat);
+    #$body=~s/^\s+//;
+    #$body=~s/\s+$//;
+    #$body=~s/>\s+/>/g;
+    return &parsebody($body);
 
-    return $dat;
+    #return $dat;
 }
 
 sub parsebody{
     my $body=shift;
-    my $data=shift || {};
-    #print $body,"\n";
-    if ($body=~/^</){
-	my $start=index $body,'>';
-	my $tag=substr $body,1,$start-1;
-	my $descend=(substr($body,$start+1,1) eq '<');
-	my $stop=index($body,$descend?"</$tag>":'<',$start);
-	my $arg=($stop>-1)?substr($body,$start+1,$stop-$start-1):substr($body,$start+1);
-	$arg=~s/&(\w+);/$XML{$1}/ge;
-	$arg=~s/^\s+//g;
-	$arg=~s/\s+$//g;
+    my @context=();
+    &init();
+    while ($body){
+	$body=~s/^\s+//;
+	#print $body;
+	if ($body=~/^</){
+	    #start/end tag
+	    my $start=index $body,'>';
+	    my $tag=substr $body,0,$start+1,'';
+	    chop $tag;
+	    $tag=~s/^<//;
+	    $tag="\L$tag";
+	    if ($tag=~m@^/@){
+		$tag=~s@^/@@;
+		my $etag='';
+		until ($etag eq $tag){
+		     $etag=pop(@context);
+		     &end(\@context,$etag);
+		     
+		}
+	    }else{
+		&start(\@context,$tag);
 
-	my $rest=($stop>-1)?substr($body,$descend?length($tag)+3+$stop:$stop):"";
-	$rest=~s/^<\/$tag>//;
-	$tag="\L$tag";
-	my @ret=("$tag",$descend?[&parsebody($arg,$data)]:$arg);
-	#print "$tag ",$HANDLER{$tag},"\n";
-	if ($HANDLER{$tag}){
-	    &{$HANDLER{$tag}}(\@ret,$data);
+		push @context,$tag;
+		
+	    }
+	}elsif($body=~/\S/){
+	    #char
+	    my $start=index $body,'<';
+	    my $str=substr $body,0,$start,'';
+	    $str=~s/&(\w+);/$XML{$1}/ge;
+	    $str=~s/\s+$//g;
+	    &char(\@context,$str);
+	    if ($body !~ m@^</@){
+		my $tag=pop(@context);
+		&end(\@context,$tag);
+	    }
+	   
+
 	}
-	if($rest){
-	    return (@ret,&parsebody($rest,$data));
-	}else{
-	    return @ret;
-	}
+	
     }
+    return &stop();
+}
+
+
+sub init{
+    $xml=undef;
+    @xml=();
+    $data={};
+}
+
+sub start{
+    my ($context,$tag)=@_;
+    my $next={};
+    $xml={} if $HANDLER{$tag};
+    
+    if ($xml && @{$context}){
+	push @xml,$xml;
+	if (ref($xml->{$context->[-1]}) eq 'HASH'){
+	    if ($xml->{$context->[-1]}->{$tag}){
+		$xml->{$context->[-1]}=[$xml->{$context->[-1]}];
+		push @{$xml->{$context->[-1]}},$next;
+	    }else{
+		$next=$xml->{$context->[-1]}
+	    }
+	    
+	}elsif(ref($xml->{$context->[-1]}) eq 'ARRAY'){
+	    push @{$xml->{$context->[-1]}},$next;
+	}else{
+	    $xml->{$context->[-1]}=$next;
+	    
+	}
+	$xml=$next;
+    }
+    
+}
+
+sub char{
+    my ($context,$str)=@_;
+    $xml->{$context->[-1]}=$str if $xml;
+}
+
+sub end{
+     my ($context,$tag)=@_;
+     if ($HANDLER{$tag}){
+	 &{$HANDLER{$tag}}($xml->{$tag},$data);
+	 undef $xml;
+	 @xml=();
+     }
+     $xml=pop (@xml) if ($xml && @xml);
+}
+
+sub stop{
+    return $data;
 }
 
 sub acctid{
     my ($arg,$data)=@_;
-    $data->{acctid}=$arg->[1];
+    $data->{acctid}=$arg;
 }
 
 sub dump{
@@ -78,29 +151,26 @@ sub dump{
 sub stmttrn{
     my ($arg,$data)=@_;
     return if $data->{type};# eq 'inv';
-    my %tran=(@{$arg->[1]});
     $data->{transactions}||=[];
-    my %rtran;
-    @rtran{qw(type quantity id number)}=
-	@tran{qw(trntype trnamt fitid checknum)};
-    $rtran{date}=&getdate($tran{dtposted});
-    $rtran{payee}=$tran{memo}||$tran{name};
-    push @{$data->{transactions}},{%rtran};
+    my %tran;
+    @tran{qw(type quantity id number)}=
+	@{$arg}{qw(trntype trnamt fitid checknum)};
+    $tran{date}=&getdate($arg->{dtposted});
+    $tran{payee}=$arg->{memo}||$arg->{name};
+    push @{$data->{transactions}},{%tran};
 }
 
 sub inv{
     my ($arg,$data)=@_;
-    my %buy=(@{$arg->[1]});
     my %tran;
     $data->{type}='inv';
     $data->{transactions}||=[];
-    my %invtran=(@{$buy{invtran}});
-    my %secid=(@{$buy{secid}});
     
-    @tran{qw(id payee)}=@invtran{qw(fitid memo)};
-    $tran{date}=&getdate($invtran{dttrade});
-    $tran{commodity}=$data->{ticker}->{$secid{uniqueid}}||$secid{uniqueid};
-    @tran{qw(quantity cost type)}=@buy{qw(units total incometype)};
+    @tran{qw(id payee)}=@{$arg->{invtran}}{qw(fitid memo)};
+    $tran{date}=&getdate($arg->{invtran}->{dttrade});
+    $tran{commodity}=$data->{ticker}->{$arg->{secid}->{uniqueid}}||
+	$arg->{secid}->{uniqueid};
+    @tran{qw(quantity cost type)}=@{$arg}{qw(units total incometype)};
     $tran{cost}=-$tran{cost};
     push @{$data->{transactions}},{%tran};
 }
@@ -108,30 +178,25 @@ sub inv{
 
 sub secinfo{
     my ($arg,$data)=@_;
-    my %secinfo=(@{$arg->[1]});
-    my %secid=(@{$secinfo{secid}});
     $data->{ticker}||={};
-    $data->{ticker}->{$secid{uniqueid}}=$secinfo{ticker};
+    $data->{ticker}->{$arg->{secid}->{uniqueid}}=$arg->{ticker};
 }
 
 sub ledgerbal{
     my ($arg, $data)=@_;
-    my %ledgerbal=@{$arg->[1]};
     $data->{balance}={};
-    @{$data->{balance}}{qw(date quantity)}=(&getdate($ledgerbal{dtasof}),
-						   $ledgerbal{balamt});
+    @{$data->{balance}}{qw(date quantity)}=(&getdate($arg->{dtasof}),
+						   $arg->{balamt});
 }
 
 sub invpos{
     my ($arg, $data)=@_;
-    my %invpos=@{$arg->[1]};
-    return if $invpos{units}==0;
-    my %secid=(@{$invpos{secid}});
+    return if $arg->{units}==0;
     my %balance;
     
-    @balance{qw(date quantity)}=(&getdate($invpos{dtpriceasof}),
-					$invpos{units});
-    $balance{commodity}=$secid{uniqueid};
+    @balance{qw(date quantity)}=(&getdate($arg->{dtpriceasof}),
+				 $arg->{units});
+    $balance{commodity}=$arg->{secid}->{uniqueid};
     $data->{balance}={%balance};
  
 }
@@ -141,5 +206,7 @@ sub getdate{
     my $dtstr=shift;
     return str2time(substr($dtstr,0,8));
 }
+
+
 
 1;

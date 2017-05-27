@@ -1,4 +1,4 @@
-package Ledger::OFX;
+package Ledger::OFX2;
 use warnings;
 use strict;
 use Date::Parse;
