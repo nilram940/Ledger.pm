@@ -21,20 +21,24 @@ my ($ledger,$transaction,$posting);
 
  
 sub parsefile{
+    my $self=shift;
     my $file=shift;
     my $parser=new XML::Parser('Handlers' => \%HANDLERS);
+    $ledger=$self;
     return $parser->parsefile($file);
 }
 
 sub parse{
+    my $self=shift;
     my $str=shift;
     my $parser=new XML::Parser('Handlers' => \%HANDLERS);
+    $ledger=$self;
     return $parser->parse($str);
 }
 
 sub init{
     my $p=shift;
-    $ledger=new Ledger();
+    $ledger||=new Ledger();
     @TREE=();
 }
 
@@ -43,7 +47,7 @@ sub start{
     #unshift @TREE,$elt;
     if ($elt eq 'transaction'){
 	$transaction=$ledger->addTransaction();
-	$transaction->{state}=$arg{state};
+	$transaction->{state}=$arg{state}||'';
     }elsif ($elt eq 'posting'){
 	$posting=$transaction->addPosting();
     }

@@ -3,6 +3,7 @@ use strict;
 use warnings;
 use Ledger::Transaction;
 use Ledger::OFX;
+use Ledger::XML;
 
 sub new{
     my $class=shift;
@@ -26,11 +27,10 @@ sub addTransaction{
     return $transaction;
 }
 
-sub fromXMLstruct{
+sub fromXML{
     my $self=shift;
     my $xml=shift;
-    my $transactions=$xml->{transactions}->{transaction};
-    $self->{transactions}=[map {Ledger::Transaction->new()->fromXMLstruct($_)} @{$transactions}];
+    Ledger::XML::parse($self,$xml);
     return $self
 }
 
@@ -40,7 +40,8 @@ sub fromOFX{
     my $hints=shift;
     my $ofxdat=Ledger::OFX::parse($ofx);
     my ($account,$code)=&getaccount($ofxdat->{acctid},$hints->{accounts});
-    
+
+    my $count=0;
     foreach my $stmttrn (@{$ofxdat->{transactions}}){
 	my $key;
 	my $payee=$stmttrn->{payee};
@@ -77,30 +78,38 @@ sub fromOFX{
 	    }else{
 		$transaction=&{$handler}($transaction);
 	    }
-	}else{
-	    $transaction->balance($hints);
 	}
-	push @{$self->{transactions}}, $transaction if $transaction;
+	if ($transaction){
+	    $transaction->balance(@{$hints}{qw(table pending)});
+	    push @{$self->{transactions}}, $transaction;
+	    $count++;
+	}
 
 
     }
-    my $payee=(split(/:/, $account))[-1];
-    $payee.=' Balance';
-    my $balance=$ofxdat->{balance};
+    if($count){
+	my $payee=(split(/:/, $account))[-1];
+	$payee.=' Balance';
+	my $balance=$ofxdat->{balance};
     
-    my $transaction=new Ledger::Transaction
-	($balance->{date},"cleared",undef,$payee);
-
-    my $commodity;
-    if ($balance->{commodity}){
-	$commodity=$ofxdat->{ticker}->{$balance->{commodity}};
-    }
-
-    $transaction->addPosting($account,$balance->{quantity},$commodity,'BAL');
-    push @{$self->{balance}},$transaction;
+	my $transaction=new Ledger::Transaction
+	    ($balance->{date},"cleared",undef,$payee);
 	
+	my $commodity;
+	if ($balance->{commodity}){
+	    $commodity=$ofxdat->{ticker}->{$balance->{commodity}};
+	}
+
+	$transaction->addPosting($account,$balance->{quantity},$commodity,'BAL');
+	push @{$self->{balance}},$transaction;
+    }
     return $self;
     
+}
+
+sub getTransactions{
+    my $self=shift;
+    return @{$self->{transactions}};
 }
 
 sub transfer{
