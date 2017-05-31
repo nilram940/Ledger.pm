@@ -3,6 +3,7 @@ use strict;
 use warnings;
 use Ledger::Posting;
 use Date::Parse;
+use Text::Levenshtein;
 use POSIX qw(strftime);
     
 sub new{
@@ -75,7 +76,7 @@ sub balance{
     my $table=shift;
     my $pending=shift;
     return if ($self->checkpending($pending->getTransactions()) ||
-	       $self->getPosting(1))
+	       $self->getPosting(1));
 
     my ($account,$prob)=&finddest($self->{postings}->[0]->{account},
 				  $self->{payee},
@@ -88,19 +89,17 @@ sub balance{
 sub checkpending{
     my $self=shift;
     my @pending=@_;
-    my $match=0;
     my $candidate=(sort {$a->[0] <=> $b->[0]}
 		   (map {[$self->distance($_), $_]}
-		    grep { $_->{state} ne 'cleared' &&
-			       $self->getPosting(0)->{account} eq
-			       $_->getPosting(0)->{account}}
+		    grep { $_->{state} ne 'cleared'}
 		    @pending))[0];
     return 0 unless ($candidate && $candidate->[0] < 1);
-    # print "Found Match...\n";
-    # print $candidate->[-1]->toString();
-    # print "\n\n";
-    # print $self->toString();
-    # print "\n\nScore: ",$candidate->[0],"\n\n";
+    my $match=$candidate->[1];
+    print "Found Match...\n";
+    print $candidate->[-1]->toString();
+    print "\n\n";
+    print $self->toString();
+    print "\n\nScore: ",$candidate->[0],"\n\n";
     
 	    
 
@@ -130,14 +129,28 @@ sub distance{
     my $self=shift;
     my $comp=shift;
     my ($account,$quantity)=@{$self->getPosting(0)}{qw(account quantity)};
-    my $dist=($self->{date}-$comp->{date})/(3*24*3600);
-    my $qdst;
-    if ($account eq $comp->getPosting(0)->{account}){
-	$qdst+=10*($comp->getPosting(0)->{quantity}-$quantity)/$quantity;
+    my $subdist=($self->{date}-$comp->{date})/(3*24*3600);
+    my $dist=$subdist*$subdist;
+    my $num=-1;
+    my $lim=$#{$comp->{postings}}+1;
+
+    #print "lim: $lim\n";
+    ++$num while ($num < $lim) && 
+	($account ne $comp->getPosting($num)->{account});
+    #print "num: $num\n";
+    if ($num<$lim){
+	$subdist+=10*($comp->getPosting($num)->{quantity}-$quantity)/$quantity;
     }else{
-	$qdst=10;
+	$subdist=10;
     }
-    return sqrt($dist*$dist+$qdst*$qdst);
+    $dist+=$subdist*$subdist;
+
+    
+    $subdist=Text::Levenshtein::distance($self->{payee},$comp->{payee});
+    $subdist=10*$subdist/length($self->{payee});
+    $dist+=$subdist*$subdist;
+				
+    return sqrt($dist), $num;
 }
 
 1;
