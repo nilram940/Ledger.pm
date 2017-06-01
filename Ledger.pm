@@ -115,6 +115,7 @@ sub getTransactions{
 sub transfer{
     my ($self,$transaction,$tag)=@_;
     $self->{transfer}||={};
+    $transaction->{transfer}=$tag;
     my $account="Equity:Transfers:$tag";
     my $amount=abs($transaction->getPosting(0)->cost());
     my $date=int ($transaction->{date}/(24*3600));
@@ -155,7 +156,7 @@ sub getaccount{
 
 sub toString{
     my $self=shift;
-    my $str=join("\n\n",map {$_->toString} (sort {$a->{date} <=> $b->{date}} @{$self->{transactions}}),@{$self->{balance}});
+    my $str=join("\n\n",map {$_->toString} (sort {$a->{date} <=> $b->{date}} @{$self->{transactions}}),(sort {$a->{date} <=> $b->{date}} @{$self->{balance}}));
     $str.="\n\n";
     return $str;
 }

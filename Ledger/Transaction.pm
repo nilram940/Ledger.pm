@@ -16,7 +16,7 @@ sub new{
     # 	       postings => []};
     my $self={postings => []};
     @{$self}{qw(date state code payee note)}=@_;
-    $self->{state}||='';
+    $self->{$_}||='' foreach (qw(date state code payee note));
     bless $self, $class;
     return $self;
 }
@@ -61,6 +61,7 @@ sub setPosting{
 	
 sub toString{
     my $self=shift;
+    return unless $self->{date};
     my $str=strftime('%Y/%m/%d', localtime $self->{date});
     $str.=($self->{state} && $self->{state} eq "cleared")?" * ":"   ";
     $str.='('.$self->{code}.') ' if $self->{code};
@@ -91,25 +92,29 @@ sub checkpending{
     my @pending=@_;
     my $candidate=(sort {$a->[0] <=> $b->[0]}
 		   (map {[$self->distance($_), $_]}
-		    grep { $_->{state} ne 'cleared'}
+		    grep { $_ -> {date} }
 		    @pending))[0];
     return 0 unless ($candidate && $candidate->[0] < 1);
     my $match=$candidate->[1];
-    print "Found Match...\n";
-    print $candidate->[-1]->toString();
-    print "\n\n";
-    print $self->toString();
-    print "\n\nScore: ",$candidate->[0],"\n\n";
+    if (0){
+	print "Found Match...\n";
+	print $candidate->[-1]->toString();
+	print "\n\n";
+	print $self->toString();
+	print "\n\nScore: ",$candidate->[0],"\n\n";
+    }
     
-	    
 
     $candidate=$candidate->[-1];
+    $candidate->{state}='cleared';
+
+    return 1 if ($self->{transfer});
+
     $candidate->{date}=$self->{date};
     $candidate->setPosting($match, $self->getPosting(0));
-    $candidate->{state}='cleared';
     $candidate->getPosting(-1)->{quantity}='';
     %{$self}=%{$candidate};
-
+    $candidate->{date} = 0;
     return 1;
 }
 
@@ -128,6 +133,14 @@ sub finddest{
 sub distance{
     my $self=shift;
     my $comp=shift;
+    if ($self->{code}=~/^\d+$/){
+	if ($comp->{code}=~/^\d+$/ && $self->{code} == $comp->{code}){
+	    return 0;
+	}else{
+	    return 10;
+	}
+    } #Check numbers are the gold standard
+    
     my ($account,$quantity)=@{$self->getPosting(0)}{qw(account quantity)};
     my $subdist=($self->{date}-$comp->{date})/(3*24*3600);
     my $dist=$subdist*$subdist;
