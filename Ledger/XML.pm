@@ -71,11 +71,11 @@ sub start{
 		if ($tree->[-1] eq "date"){
 		    $transaction->{date}=str2time($str);
 		}else{
-		    $transaction->{$tree->[-1]} = $str;
+		    $transaction->{$tree->[-1]} .= $str;
 		}
 	    }elsif($tree->[4] eq 'posting'){
 		my $key=$post{join('->',@{$tree}[(5..$#{$tree})])};
-		$posting->{$key}=$str if $key;
+		$posting->{$key}.=$str if $key;
 	    }
 	}
     }

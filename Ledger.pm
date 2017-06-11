@@ -7,10 +7,10 @@ use Ledger::XML;
 
 sub new{
     my $class=shift;
+    my %args=@_;
     my $self={ transactions => [], 
-	       balance=>[], 
-	       table=>{}, 
-	       id=>{}};
+	       balance=>[]}; 
+    $self->{$_}=$args{$_}||{} foreach (qw( table id desc accounts));
     bless $self, $class;
     return $self;
 }
@@ -37,9 +37,9 @@ sub fromXML{
 sub fromOFX{
     my $self=shift;
     my $ofx=shift;
-    my $hints=shift;
+    my $handlers=shift;
     my $ofxdat=Ledger::OFX::parse($ofx);
-    my ($account,$code)=&getaccount($ofxdat->{acctid},$hints->{accounts});
+    my ($account,$code)=&getaccount($ofxdat->{acctid},$self->{accounts});
 
     my $count=0;
     foreach my $stmttrn (@{$ofxdat->{transactions}}){
@@ -47,19 +47,19 @@ sub fromOFX{
 	my $payee=$stmttrn->{payee};
 	if ($stmttrn->{id}){
 	    $key=$code.'-'.$stmttrn->{id};
-	    if ($hints->{id}->{$key}){
-		$hints->{desc}->{$payee}=$hints->{id}->{$key};
+	    if ($self->{id}->{$key}){
+		$self->{desc}->{$payee}=$self->{id}->{$key};
 		next;
 	    }
 	}
-	my $handler=$hints->{handlers}->{$account}->{$payee}||
-	    $hints->{handlers}->{$account}->{$hints->{desc}->{$payee}};
+	my $handler=$handlers->{$account}->{$payee}||
+	    $handlers->{$account}->{$self->{desc}->{$payee}||""};
 
 	if ($handler && ref ($handler) eq 'HASH'){
 	    $payee=$handler->{payee}; 
 	}
-	elsif ($hints->{desc}->{$payee}){
-	    $payee=$hints->{desc}->{$payee};
+	elsif ($self->{desc}->{$payee}){
+	    $payee=$self->{desc}->{$payee};
 	}
 	
 	my $transaction=new Ledger::Transaction 
@@ -80,7 +80,8 @@ sub fromOFX{
 	    }
 	}
 	if ($transaction){
-	    $transaction->balance(@{$hints}{qw(table pending)});
+	    $transaction->balance($self->{table},
+				  $self->getTransactions('pending'));
 	    push @{$self->{transactions}}, $transaction;
 	    $count++;
 	}
@@ -109,6 +110,17 @@ sub fromOFX{
 
 sub getTransactions{
     my $self=shift;
+    my $filter=shift||'';
+    if ($filter eq 'cleared'){
+	return grep {$_->{state} eq 'cleared'} @{$self->{transactions}};
+    }    
+    if ($filter eq 'uncleared'){
+	return grep {$_->{state} ne 'cleared'} @{$self->{transactions}};
+    }
+    if ($filter eq 'balance'){
+	return @{$self->{balance}};
+    }
+
     return @{$self->{transactions}};
 }
 
@@ -150,7 +162,13 @@ sub getaccount{
     return ($account,$code);
 }
 
-	
+
+sub getCleared{
+    my $self=shift;
+    my $uncleared=@_ && not shift;
+    grep {$uncleared xor $_->{state} eq "cleared"} $self->getTransactions();
+}
+    
     
 
 
@@ -160,6 +178,29 @@ sub toString{
     $str.="\n\n";
     return $str;
 }
-    
+
+sub toString2{
+    my $self=shift;
+    my $filter=shift;
+    my $str;
+
+    if ($filter){
+	$str=join("\n\n", (map {$_->toString} 
+			   (sort {$a->{date} <=> $b->{date}}
+			    $self->getTransactions($filter))))."\n\n"
+    }else{
+
+	$str=join("\n\n",(map {$_->toString} 
+		 (sort {$a->{date} <=> $b->{date}} 
+		  $self->getTransactions("cleared")),
+		 (sort {$a->{date} <=> $b->{date}} @{$self->{balance}})),
+		 ";----UNCLEARED-----",
+		  (map {$_->toString} 
+		  (sort {$a->{date} <=> $b->{date}} 
+		   $self->getTransactions("uncleared"))));
+	$str.="\n\n";
+     }
+    return $str;
+}
        
 1;

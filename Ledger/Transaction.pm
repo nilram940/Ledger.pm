@@ -75,8 +75,8 @@ sub toString{
 sub balance{
     my $self=shift;
     my $table=shift;
-    my $pending=shift;
-    return if ($self->checkpending($pending->getTransactions()) ||
+    my @pending=@_;
+    return if ($self->checkpending(@pending) ||
 	       $self->getPosting(1));
 
     my ($account,$prob)=&finddest($self->{postings}->[0]->{account},
@@ -142,7 +142,7 @@ sub distance{
     } #Check numbers are the gold standard
     
     my ($account,$quantity)=@{$self->getPosting(0)}{qw(account quantity)};
-    my $subdist=($self->{date}-$comp->{date})/(3*24*3600);
+    my $subdist=($self->{date}-$comp->{date})/(4*24*3600);
     my $dist=$subdist*$subdist;
     my $num=-1;
     my $lim=$#{$comp->{postings}}+1;
@@ -152,14 +152,18 @@ sub distance{
 	($account ne $comp->getPosting($num)->{account});
     #print "num: $num\n";
     if ($num<$lim){
-	$subdist+=10*($comp->getPosting($num)->{quantity}-$quantity)/$quantity;
+	if ($quantity==0){
+	    $subdist+=10*($comp->getPosting($num)->{quantity}-$quantity);
+	}else{
+	    $subdist+=10*($comp->getPosting($num)->{quantity}-$quantity)/$quantity;
+	}
     }else{
 	$subdist=10;
     }
     $dist+=$subdist*$subdist;
 
     
-    $subdist=Text::Levenshtein::distance($self->{payee},$comp->{payee});
+    $subdist=Text::Levenshtein::distance(lc($self->{payee}),lc($comp->{payee}));
     $subdist=10*$subdist/length($self->{payee});
     $dist+=$subdist*$subdist;
 				
