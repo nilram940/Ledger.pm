@@ -90,6 +90,7 @@ sub balance{
 sub checkpending{
     my $self=shift;
     my @pending=@_;
+    #print STDERR $self->{payee}."\n";
     my $candidate=(sort {$a->[0] <=> $b->[0]}
 		   (map {[$self->distance($_), $_]}
 		    grep { $_ -> {date} }
@@ -108,7 +109,10 @@ sub checkpending{
     $candidate=$candidate->[-1];
     $candidate->{state}='cleared';
 
-    return 1 if ($self->{transfer});
+    if ($self->{transfer}){
+	$self->{date}=0;
+	return 1
+    }
 
     $candidate->{date}=$self->{date};
     $candidate->setPosting($match, $self->getPosting(0));
@@ -153,18 +157,20 @@ sub distance{
     #print "num: $num\n";
     if ($num<$lim){
 	if ($quantity==0){
-	    $subdist+=10*($comp->getPosting($num)->{quantity}-$quantity);
+	    $subdist=10*($comp->getPosting($num)->{quantity}-$quantity);
 	}else{
-	    $subdist+=10*($comp->getPosting($num)->{quantity}-$quantity)/$quantity;
+	    $subdist=10*($comp->getPosting($num)->{quantity}-$quantity)/$quantity;
 	}
     }else{
 	$subdist=10;
     }
     $dist+=$subdist*$subdist;
 
-    
-    $subdist=Text::Levenshtein::distance(lc($self->{payee}),lc($comp->{payee}));
-    $subdist=10*$subdist/length($self->{payee});
+    my $len=length($comp->{payee});
+    my $payee=lc(substr $self->{payee},0,$len);
+    #print STDERR $payee."\n";
+    $subdist=Text::Levenshtein::distance($payee,lc($comp->{payee}));
+    $subdist=10*$subdist/$len;
     $dist+=$subdist*$subdist;
 				
     return sqrt($dist), $num;
