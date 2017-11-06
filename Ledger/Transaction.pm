@@ -110,7 +110,7 @@ sub checkpending{
     $candidate->{state}='cleared';
 
     if ($self->{transfer}){
-	$self->{date}=0;
+	$candidate->{date}=0;
 	return 1
     }
 
@@ -139,14 +139,14 @@ sub distance{
     my $comp=shift;
     if ($self->{code}=~/^\d+$/){
 	if ($comp->{code}=~/^\d+$/ && $self->{code} == $comp->{code}){
-	    return 0;
+	    return (0,0);
 	}else{
-	    return 10;
+	    return (10,0);
 	}
     } #Check numbers are the gold standard
     
     my ($account,$quantity)=@{$self->getPosting(0)}{qw(account quantity)};
-    my $subdist=($self->{date}-$comp->{date})/(4*24*3600);
+    my $subdist=($self->{date}-$comp->{date})/(5*24*3600);
     my $dist=$subdist*$subdist;
     my $num=-1;
     my $lim=$#{$comp->{postings}}+1;
