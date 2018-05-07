@@ -4,6 +4,7 @@ use warnings;
 use Ledger::Transaction;
 use Ledger::OFX;
 use Ledger::XML;
+use Ledger::CSV;
 
 sub new{
     my $class=shift;
@@ -33,6 +34,14 @@ sub fromXML{
     Ledger::XML::parse($self,$xml);
     return $self
 }
+
+sub fromCSV{
+    my $self=shift;
+    my ($fields, $file)=@_;
+    Ledger::CSV::parsefile($self,$fields, $file);
+    return $self;
+}
+	
 
 sub fromOFX{
     my $self=shift;
