@@ -1,7 +1,7 @@
 package Ledger::CSV;
 use warnings;
 use strict;
-use Data::Dumper;
+#use Data::Dumper;
 use Date::Parse;
 use Text::CSV;
 
@@ -24,25 +24,29 @@ sub parsefile{
 	chomp;
 	@csv{@{$fields}}=map { s/^\s*"//;s/"\s*$//;$_} split (',');
 	if ($csv{id} != $id ){
-	    if ($transaction){ 
-		if ($transaction->{file} eq $csv{file}){
-		    $transaction->{epos}=$csv{bpos}-1;
-		}else{
-		    $transaction->{epos}=-1;
-		}
-	    }
+	    # if ($transaction){ 
+	    # 	if ($transaction->{file} eq $csv{file}){
+	    # 	    $transaction->{epos}=$csv{bpos}-1;
+	    # 	}else{
+	    # 	    $transaction->{epos}=-1;
+	    # 	}
+	    # }
 	    my $state;
 	    if ($csv{state} eq '*'){
 		$state='cleared';
 	    }
-	    $transaction=$ledger->addTransaction(str2time($csv{date}), $state, $csv{code}, 
+	    $transaction=$ledger->addTransaction(str2time($csv{date}), 
+						 $state, $csv{code}, 
 						 $csv{payee},$csv{note});
 	    $transaction->{id}=$csv{id};
-	    $transaction->{bpos}=$csv{bpos};
 	    $transaction->{file}=$csv{file};
 	    
 	}
-	$transaction->addPosting($csv{account}, $csv{amount}, $csv{commodity}, '', $csv{note});
+	my $posting=$transaction->addPosting($csv{account}, $csv{amount}, 
+					     $csv{commodity}, '', $csv{note});
+	$posting->{bpos}=$csv{bpos};
+	$posting->{epos}=$csv{epos};
+	$transaction->{epos}=$csv{epos};
 	$id=$csv{id};
     }
     close($fd);

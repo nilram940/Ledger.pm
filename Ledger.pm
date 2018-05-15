@@ -1,6 +1,7 @@
 package Ledger;
 use strict;
 use warnings;
+use Fcntl qw(SEEK_SET SEEK_CUR SEEK_END);
 use Ledger::Transaction;
 use Ledger::OFX;
 use Ledger::XML;
@@ -37,8 +38,11 @@ sub fromXML{
 
 sub fromCSV{
     my $self=shift;
-    my ($fields, $file)=@_;
-    Ledger::CSV::parsefile($self,$fields, $file);
+    my ($fields, $file, $pipe)=@_;
+    my $dir=$pipe?'-|':'<';
+    open(my $csv, $dir, $file) || die qq(Can't open csv "$file" : $!);
+    Ledger::CSV::parsefile($self,$fields, $csv);
+    close($csv);
     return $self;
 }
 	
@@ -178,9 +182,30 @@ sub getCleared{
     grep {$uncleared xor $_->{state} eq "cleared"} $self->getTransactions();
 }
     
-    
+sub gettable{
+    my $self=shift;
+    my $table={};    
 
+    foreach my $transaction ($self->getTransactions()){
+	my $source=$transaction->getPosting(0)->{account};
+	my $amount=$transaction->getPosting(0)->{quantity};
+	my $bracket=($amount<0?-1:1);
+	my $dest=$transaction->getPosting(-1)->{account};
+	my $payee=$transaction->{payee};
+	$table->{$source}||={};
+	$table->{$source}->{$payee}||={total =>0 ,$dest => 0};
+	$table->{$source}->{$payee}->{total}++;
+	$table->{$source}->{$payee}->{$dest.'-'.$bracket}++;
 
+	$payee='@@account default@@';
+	$bracket=($amount<0?-1:1);
+	$dest=join(':',(split(/:/,$dest))[0,1]);
+	$table->{$source}->{$payee}||={total =>0 ,$dest => 0};
+	$table->{$source}->{$payee}->{total}++;
+	$table->{$source}->{$payee}->{$dest.'-'.$bracket}++;
+    }
+    return ($table);
+}
 sub toString{
     my $self=shift;
     my $str=join("\n\n",map {$_->toString} (sort {$a->{date} <=> $b->{date}} @{$self->{transactions}}),(sort {$a->{date} <=> $b->{date}} @{$self->{balance}}));
@@ -210,6 +235,42 @@ sub toString2{
 	$str.="\n\n";
      }
     return $str;
+}
+
+sub print{
+    my $self=shift;
+    my $file='';
+    my $fh;
+	
+    foreach my $transaction (@{$self->{transactions}}){
+	
+	if ($transaction->{file} ne $file){
+	    $file=$transaction->{file};
+	    close($fh) if $fh;
+	    open ($fh, "<", $file);
+	}
+	unless ($transaction->{bpos}){
+	    my $len=200;
+	    my $pos=$transaction->getPosting(0)->{bpos}-$len;
+	    if ($pos<0){
+		$len+=$pos;
+		$pos=0;
+	    }
+	    seek ($fh, $pos, SEEK_SET);
+	    read $fh, (my $str), $len-1; 
+	    my $idx=rindex $str,"\n";
+	    $idx=0 if $idx<0;
+	    $transaction->{bpos}=$pos+$idx;
+	}
+	seek ($fh, $transaction->{bpos}, SEEK_SET);
+	read $fh, (my $trstr), ($transaction->{epos}-$transaction->{bpos});
+	print $trstr;#."\n";
+    }
+    
+}
+
+sub update{
+    my $self=shift;
 }
        
 1;
