@@ -62,6 +62,9 @@ sub setPosting{
 sub toString{
     my $self=shift;
     return unless $self->{date};
+    if ($self->{original} && !$self->{edit}){
+	return $self->{original};
+    }
     my $str=strftime('%Y/%m/%d', localtime $self->{date});
     $str.="=".strftime('%Y/%m/%d', localtime $self->{'aux-date'}) 
 	if $self->{'aux-date'};
@@ -70,7 +73,12 @@ sub toString{
     $str.=$self->{payee};
     $str.='     ;'.$self->{note} if ($self->{note});
     $str.="\n";
-    $str.=join("\n",map {$_->toString} (@{$self->{postings}}));
+    $str.=join("\n",map {$_->toString} (@{$self->{postings}}))."\n";
+    if ($self->{original}){
+	my $orig=$self->{original};
+	$orig=~s/^/; /mg;
+	$str.="\n".$orig;
+    }
     return $str;
 }
 
@@ -116,10 +124,15 @@ sub checkpending{
 	return 1
     }
 
-    $candidate->{'aux-date'}=$self->{date};
+    $candidate->{'aux-date'}=$candidate->{date} 
+           unless $candidate->{date} == $self->{date};
+    $candidate->{'date'}=$self->{date}; 
+    $self->getPosting(0)->{bpos}=$candidate->getPosting($match)->{bpos};
+    $self->getPosting(0)->{epos}=$candidate->getPosting($match)->{epos};
     $candidate->setPosting($match, $self->getPosting(0));
     $candidate->getPosting(-1)->{quantity}='';
     %{$self}=%{$candidate};
+    $self->{'edit'}=1;
     $candidate->{date} = 0;
     return 1;
 }

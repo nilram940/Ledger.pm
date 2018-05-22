@@ -29,7 +29,8 @@ sub parse{
     my $dat={};
     my %header=();
     $text=~s/\r//g;
-    my ($header,$body)=split(/\n\n/,$text,2);
+    my ($header,$body)=split(/<OFX>/,$text,2);
+    $body='<OFX>'.$body;
 
     #$body=~s/^\s+//;
     #$body=~s/\s+$//;

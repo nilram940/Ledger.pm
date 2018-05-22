@@ -7,7 +7,7 @@ use Text::CSV;
 
 sub parsefile{
     my ($ledger,$fields,$file)=@_;
-    my $tcsv=Text::CSV->new();
+    my $tcsv=Text::CSV->new({escape_char => '\\'});
     my %csv;
     my $transaction;
     my $id=-1;
@@ -17,31 +17,23 @@ sub parsefile{
     }else{
 	open($fd, "<", $file) || die "Can't open $file: $!";
     }
-   #fields=( id, file, bpos, date, code, payee, account, commodity, amount, state, note ) 
-    #while(my $row=$tcsv->getline($fd)){
-    while (<$fd>){
-	#@csv{@{$fields}}=@$row;
-	chomp;
-	@csv{@{$fields}}=map { s/^\s*"//;s/"\s*$//;$_} split (',');
+    while(my $row=$tcsv->getline($fd)){
+	@csv{@{$fields}}=@$row;
 	if ($csv{id} != $id ){
-	    # if ($transaction){ 
-	    # 	if ($transaction->{file} eq $csv{file}){
-	    # 	    $transaction->{epos}=$csv{bpos}-1;
-	    # 	}else{
-	    # 	    $transaction->{epos}=-1;
-	    # 	}
-	    # }
 	    my $state;
 	    if ($csv{state} eq '*'){
 		$state='cleared';
+	    }elsif($csv{state} eq '!'){
+		$state='pending';
 	    }
 	    $transaction=$ledger->addTransaction(str2time($csv{date}), 
 						 $state, $csv{code}, 
-						 $csv{payee},$csv{note});
+						 $csv{payee},$csv{xnote});
 	    $transaction->{id}=$csv{id};
 	    $transaction->{file}=$csv{file};
 	    
 	}
+	$csv{note}=~s/\Q$csv{xnote}\E//;
 	my $posting=$transaction->addPosting($csv{account}, $csv{amount}, 
 					     $csv{commodity}, '', $csv{note});
 	$posting->{bpos}=$csv{bpos};
@@ -49,9 +41,11 @@ sub parsefile{
 	$transaction->{epos}=$csv{epos};
 	$id=$csv{id};
     }
+    $tcsv->eof or $tcsv->error_diag();
     close($fd);
     return $ledger;
 }
+
 	    
 
 1;	
