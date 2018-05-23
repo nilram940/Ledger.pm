@@ -53,8 +53,11 @@ sub fromOFX{
     my $handlers=shift;
     my $ofxdat=Ledger::OFX::parse($ofx);
     my ($account,$code)=&getaccount($ofxdat->{acctid},$self->{accounts});
-
+    
     my $count=0;
+    unless ($self->{ofxfile}){
+	$self->{ofxfile}=($self->getTransactions('cleared'))[-1]->{file};
+    }
     foreach my $stmttrn (@{$ofxdat->{transactions}}){
 	my $key;
 	my $payee=$stmttrn->{payee};
@@ -78,6 +81,10 @@ sub fromOFX{
 	my $transaction=new Ledger::Transaction 
 	    ($stmttrn->{date}, "cleared", $stmttrn->{number}, 
 	     $payee);
+	$transaction->{file}=$self->{ofxfile};
+	$transaction->{edit}=$self->{ofxfile};
+	$transaction->{bpos}=-1;
+	$transaction->{epos}=-1;
 			
 	my $commodity;
 	if ($stmttrn->{commodity}){
@@ -325,44 +332,35 @@ sub update{
     my $lastpos;
 
     my @uncleared= $self->getTransactions('uncleared');
-    my @transactions=((grep {  $_->{edit}} @{$self->{transactions}}),
-		      @uncleared);
+    
+    my @transactions=sort {$a->{epos} <=> $b->{epos}} 
+                      (grep { $_->{date}>0 && 
+				  ($_->{edit} || $_->{state} ne 'cleared')} 
+		       @{$self->{transactions}});
+	     
     if (@transactions){
 	$file=$transactions[-1]->{file}; #assume only one file
     }else{
-	$file=$self->{transactions}->[-1]->{file}; # all writes go to last file read
+	$file=$self->{ofxfile}; # all writes go to last file read
     }
     print STDERR "file=$file\n";
-    #rename($file,"$file.bak");
-    open ($writeh, ">&", \*STDOUT);
-    open ($readh, "<", "$file");
+    rename($file,"$file.bak");
+    # open ($writeh, ">&", \*STDOUT);
+    # open ($readh, "<", "$file");
+    open ($writeh, ">", $file);
+    open ($readh, "<", "$file.bak");
     $lastpos=0;
+
     foreach my $transaction (@transactions){
 	next unless $transaction->{file} eq $file;
-	unless ($transaction->{bpos}){
-	    my $len=200;
-	    my $pos=$transaction->getPosting(0)->{bpos}-$len;
-	    if ($pos<0){
-		$len+=$pos;
-		$pos=0;
-	    }
-	    seek ($readh, $pos, SEEK_SET);
-	    read $readh, (my $str), $len-1; 
-	    my $idx=rindex $str,"\n";
-	    #$idx=0 if $idx<0;
-	    $transaction->{bpos}=$pos+$idx+1;
-	}
-	my $len=$transaction->{bpos}-$lastpos-1;
-	seek ($readh, $lastpos, SEEK_SET);     # read from last read
-	read $readh, (my $buffer), $len;       #  to beginning of transaction 
-	print $writeh $buffer;                 # copy to new file
-	$lastpos=$transaction->{epos};         # keep transaction til end of file
-	unless ($transaction->{original}){
-	    seek ($readh, $transaction->{bpos}, SEEK_SET);
-	    read $readh, (my $trstr), 
-		($transaction->{epos}-$transaction->{bpos});
-	    #$trstr=~s/^/; /mg;
-	    $transaction->{original}=$trstr;
+	$transaction->findtext($readh) unless ($transaction->{bpos});
+
+	if ($transaction->{bpos}>0){
+	    my $len=$transaction->{bpos}-$lastpos-1;
+	    seek ($readh, $lastpos, SEEK_SET);     # read from last read
+	    read $readh, (my $buffer), $len;       #  to beginning of transaction 
+	    print $writeh $buffer;                 # copy to new file
+	    $lastpos=$transaction->{epos};         # keep transaction til end of file
 	}
     }
     # copy to end of file.
@@ -376,8 +374,9 @@ sub update{
     } 
     close($readh);
 
-    my @cleared=grep {$_->{state} eq 'cleared' && 
-     			  (! $_->{file} || $_->{edit})} 
+    my @cleared=grep {$_->{state} eq 'cleared' &&
+			  $_->{edit} &&
+     			  ($_->{edit} eq $file)} 
     @{$self->{transactions}};
     
     # my @cleared=grep { ! $_->{file}} @{$self->{transactions}};

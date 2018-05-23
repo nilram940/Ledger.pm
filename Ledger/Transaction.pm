@@ -5,6 +5,7 @@ use Ledger::Posting;
 use Date::Parse;
 use Text::Levenshtein;
 use POSIX qw(strftime);
+use Fcntl qw(SEEK_SET SEEK_CUR SEEK_END);
     
 sub new{
     my $class=shift;
@@ -18,6 +19,31 @@ sub new{
     @{$self}{qw(date state code payee note)}=@_;
     $self->{$_}||='' foreach (qw(date state code payee note));
     bless $self, $class;
+    return $self;
+}
+
+sub findtext{
+    my ($self, $fh)=@_;
+
+    #assume no bpos
+    my $len=200;
+    my $bpos=$self->getPosting(0)->{bpos};
+    unless ($bpos){
+	$self->{bpos}=-1;
+	return $self;
+    }
+    my $pos=$bpos-$len;
+    if ($pos<0){
+	$len+=$pos;
+	$pos=0;
+    }
+    seek ($fh, $pos, SEEK_SET);
+    read $fh, (my $str), $len-1; 
+    my $idx=rindex $str,"\n";
+    $self->{bpos}=$pos+$idx+1;
+    seek ($fh, $self->{bpos}, SEEK_SET);
+    read $fh, (my $trstr), ($self->{epos}-$self->{bpos});
+    $self->{text}=$trstr;
     return $self;
 }
 
@@ -62,8 +88,8 @@ sub setPosting{
 sub toString{
     my $self=shift;
     return unless $self->{date};
-    if ($self->{original} && !$self->{edit}){
-	return $self->{original};
+    if ($self->{text} && !$self->{edit}){
+	return $self->{text};
     }
     my $str=strftime('%Y/%m/%d', localtime $self->{date});
     $str.="=".strftime('%Y/%m/%d', localtime $self->{'aux-date'}) 
@@ -74,8 +100,8 @@ sub toString{
     $str.='     ;'.$self->{note} if ($self->{note});
     $str.="\n";
     $str.=join("\n",map {$_->toString} (@{$self->{postings}}))."\n";
-    if ($self->{original}){
-	my $orig=$self->{original};
+    if ($self->{text}){
+	my $orig=$self->{text};
 	$orig=~s/^/; /mg;
 	$str.="\n".$orig;
     }
@@ -126,13 +152,14 @@ sub checkpending{
 
     $candidate->{'aux-date'}=$candidate->{date} 
            unless $candidate->{date} == $self->{date};
-    $candidate->{'date'}=$self->{date}; 
+    $candidate->{date}=$self->{date};
+    $candidate->{edit}=$self->{file};
     $self->getPosting(0)->{bpos}=$candidate->getPosting($match)->{bpos};
     $self->getPosting(0)->{epos}=$candidate->getPosting($match)->{epos};
     $candidate->setPosting($match, $self->getPosting(0));
     $candidate->getPosting(-1)->{quantity}='';
     %{$self}=%{$candidate};
-    $self->{'edit'}=1;
+    #$self->{'edit'}=1;
     $candidate->{date} = 0;
     return 1;
 }

@@ -12,6 +12,9 @@ sub parsefile{
     my $transaction;
     my $id=-1;
     my $fd;
+#    my $trfile='';
+#    my $tranfd;
+	
     if (ref $file){
 	$fd=$file;
     }else{
@@ -26,6 +29,14 @@ sub parsefile{
 	    }elsif($csv{state} eq '!'){
 		$state='pending';
 	    }
+	    # if ($transaction && $transaction->{'state'} ne 'cleared'){
+	    # 	if ($transaction->{file} ne $trfile){
+	    # 	    $trfile=$transaction->{file};
+	    # 	    close($tranfd) if $tranfd;
+	    # 	    open($tranfd,'<', $trfile);
+	    # 	}
+	    # 	$transaction->findtext($tranfd);
+	    # }
 	    $transaction=$ledger->addTransaction(str2time($csv{date}), 
 						 $state, $csv{code}, 
 						 $csv{payee},$csv{xnote});
@@ -42,10 +53,10 @@ sub parsefile{
 	$id=$csv{id};
     }
     $tcsv->eof or $tcsv->error_diag();
-    close($fd);
+    close($fd) unless $fd == $file;
+#    close($tranfd) if $tranfd;
     return $ledger;
 }
 
-	    
 
 1;	
