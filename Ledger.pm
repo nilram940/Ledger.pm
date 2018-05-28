@@ -189,30 +189,32 @@ sub getCleared{
     grep {$uncleared xor $_->{state} eq "cleared"} $self->getTransactions();
 }
     
-sub gettable{
+sub gentable {
     my $self=shift;
     my $table={};    
 
     foreach my $transaction ($self->getTransactions()){
-	my $source=$transaction->getPosting(0)->{account};
-	my $amount=$transaction->getPosting(0)->{quantity};
-	my $bracket=($amount<0?-1:1);
-	my $dest=$transaction->getPosting(-1)->{account};
-	my $payee=$transaction->{payee};
-	$table->{$source}||={};
-	$table->{$source}->{$payee}||={total =>0 ,$dest => 0};
-	$table->{$source}->{$payee}->{total}++;
-	$table->{$source}->{$payee}->{$dest.'-'.$bracket}++;
-
-	$payee='@@account default@@';
-	$bracket=($amount<0?-1:1);
-	$dest=join(':',(split(/:/,$dest))[0,1]);
-	$table->{$source}->{$payee}||={total =>0 ,$dest => 0};
-	$table->{$source}->{$payee}->{total}++;
-	$table->{$source}->{$payee}->{$dest.'-'.$bracket}++;
+    	my $source=$transaction->getPosting(0)->{account};
+    	my $amount=$transaction->getPosting(0)->{quantity};
+    	my $bracket=($amount<0?-1:1)*length(sprintf('%.2f',abs($amount)));
+    	my $dest=$transaction->getPosting(-1)->{account};
+    	my $payee=$transaction->{payee}.'-'.$bracket;
+    	$table->{$source}||={};
+    	$table->{$source}->{$payee}||={total =>0 ,$dest => 0};
+    	$table->{$source}->{$payee}->{total}++;
+    	$table->{$source}->{$payee}->{$dest}++;
+	
+    	$payee='@@account default@@-'.$bracket;
+    	# #$bracket=($amount<0?-1:1);
+    	$dest=join(':',(split(/:/,$dest))[0,1]);
+    	$table->{$source}->{$payee}||={total =>0 ,$dest => 0};
+    	$table->{$source}->{$payee}->{total}++;
+    	$table->{$source}->{$payee}->{$dest}++;
     }
-    return ($table);
+    $self->{table}=$table;
+    return ($self);
 }
+
 sub toString{
     my $self=shift;
     my $str=join("\n\n",map {$_->toString} (sort {$a->{date} <=> $b->{date}} @{$self->{transactions}}),(sort {$a->{date} <=> $b->{date}} @{$self->{balance}}));
@@ -325,7 +327,7 @@ sub print{
 # }
 
 
-sub update{
+sub update1{
     my $self=shift;
     my $file='';
     my ($readh,$writeh);
@@ -337,18 +339,19 @@ sub update{
                       (grep { $_->{date}>0 && 
 				  ($_->{edit} || $_->{state} ne 'cleared')} 
 		       @{$self->{transactions}});
-	     
-    if (@transactions){
+
+    return unless grep { $_->{edit} } @transactions;
+    #if (@transactions){
 	$file=$transactions[-1]->{file}; #assume only one file
-    }else{
-	$file=$self->{ofxfile}; # all writes go to last file read
-    }
+    #}else{
+    #	$file=$self->{ofxfile}; # all writes go to last file read
+    #}
     print STDERR "file=$file\n";
-    rename($file,"$file.bak");
-    # open ($writeh, ">&", \*STDOUT);
-    # open ($readh, "<", "$file");
-    open ($writeh, ">", $file);
-    open ($readh, "<", "$file.bak");
+    # rename($file,"$file.bak");
+    open ($writeh, ">&", \*STDOUT);
+    open ($readh, "<", "$file");
+    #open ($writeh, ">", $file);
+    #open ($readh, "<", "$file.bak");
     $lastpos=0;
 
     foreach my $transaction (@transactions){
@@ -367,9 +370,11 @@ sub update{
     seek ($readh, $lastpos, SEEK_SET);
     my $len=1024;
     my $buffer;
-    my $readlen=$len;
-    while ($readlen==$len){
-	$readlen=read $readh, $buffer, $len;
+    #my $readlen=$len;
+    #while ($readlen==$len){
+    #
+    while (!eof($readh)){
+	read $readh, $buffer, $len;
 	print $writeh $buffer;
     } 
     close($readh);
@@ -392,5 +397,123 @@ sub update{
     close($writeh);
 }
     
+sub update{
+    my $self=shift;
+
+    my @edit;
+    if ($self->{ofxfile}){
+	@edit=(grep { ( $_->{edit} || 
+			($_->{date}>0 && 
+			 $_->{state} ne 'cleared' && 
+			 $_->{file} eq $self->{ofxfile}))}
+	       @{$self->{transactions}});
+	
+    }else{
+	@edit=(grep { $_->{edit} }
+	       @{$self->{transactions}});
+    }
+
+    my $file='';
+    my $fd;
+    foreach my $transaction (sort {$a->{file} cmp $b->{file}} @edit){
+	next if $transaction->{bpos};
+	
+	unless ($transaction->{file} eq $file){
+	    close($fd) if $fd;
+	    $file=$transaction->{file};
+	    print STDERR "findtext: $file\n";
+	    open ($fd, "<", $file) || die "Can't open $file: $!";
+	}
+	$transaction->findtext($fd);
+    }
+    close($fd) if $fd;
+    
+			  
+    my %files=map {($_->{file}=>1, $_->{edit}=>1)} @edit;
+
+    foreach $file (keys %files){
+	$self->update_file($file);
+    }
+}
+
+sub update_file{
+    my $self=shift;
+    my $file=shift;
+    my $ofx=($self->{ofxfile} && $self->{ofxfile} eq $file);
+    
+    my @file_trans;
+    if ($ofx){
+	@file_trans= (grep {($_->{file} eq $file) &&
+				($_->{edit} ||
+				 ($_->{date} >0 && 
+				  $_->{state} ne 'cleared'))}
+		      @{$self->{transactions}});
+    }else{
+	@file_trans= (grep {($_->{file} eq $file && $_->{edit})}
+		      @{$self->{transactions}});
+    }
+    my @edit_trans;
+ 
+    if($ofx){ 
+	@edit_trans= (grep {($_->{edit} && $_->{edit} eq $file)}
+		      @{$self->{transactions}});
+    }else{
+	@edit_trans= (grep {($_->{edit} && $_->{file} ne $file 
+			     && $_->{edit} eq $file)}
+		      @{$self->{transactions}});
+    }
+    
+    my $lastpos=0;
+    print STDERR "file=$file\n";
+    rename($file,"$file.bak");
+    open (my $writeh, ">", $file);
+    open (my $readh, "<", "$file.bak");
+
+    foreach my $transaction (sort {$a->{bpos} <=> $b->{bpos}} @file_trans){
+	unless ($transaction->{bpos}){
+	    print STDERR $transaction->toString.'\n';
+	}
+	if ($transaction->{bpos}>0){
+	    my $len=$transaction->{bpos}-$lastpos-1;
+	    seek ($readh, $lastpos, SEEK_SET);     # read from last read
+	    read $readh, (my $buffer), $len;       #  to beginning of transaction 
+	    print $writeh $buffer;                 # copy to new file
+	    $lastpos=$transaction->{epos};         # 
+	    if (!$ofx && $transaction -> {edit} eq $file){
+		print $writeh $transaction->toString();
+	    }
+	}
+    }
+    # copy to end of file.
+    seek ($readh, $lastpos, SEEK_SET);
+    my $len=1024;
+    my $buffer;
+
+    while (!eof($readh)){
+	read $readh, $buffer, $len;
+	print $writeh $buffer;
+    } 
+    close($readh);
+
+    print $writeh '; '.localtime."\n\n";
+
+    if ($ofx){
+	my @cleared=grep {$_->{state} eq 'cleared' } @edit_trans;
+	my @uncleared=grep {$_->{state} ne 'cleared' } @edit_trans;
+	   
+	print $writeh join("\n",(map {$_->toString} 
+				 (sort {$a->{date} <=> $b->{date}} @cleared),
+				 (sort {$a->{date} <=> $b->{date}} 
+				  @{$self->{balance}}),
+				 (sort {$a->{date} <=> $b->{date}} 
+				  @uncleared)))."\n\n";
+    }else{
+	print $writeh join("\n",(map {$_->toString} 
+				 (sort {$a->{date} <=> $b->{date}} 
+				  @edit_trans)))."\n\n";
+    }
+    close($writeh);
+
+}
 
 1;

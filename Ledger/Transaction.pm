@@ -116,6 +116,7 @@ sub balance{
 	       $self->getPosting(1));
 
     my ($account,$prob)=&finddest($self->{postings}->[0]->{account},
+				  $self->{postings}->[0]->{quantity},
 				  $self->{payee},
 				  $table);
     $self->addPosting($account,undef,undef,undef,"INFO: UNKNOWN ($prob)")
@@ -161,14 +162,16 @@ sub checkpending{
     %{$self}=%{$candidate};
     #$self->{'edit'}=1;
     $candidate->{date} = 0;
+    $candidate->{edit} = '';
     return 1;
 }
 
 
 sub finddest{
-    my ($account,$desc,$table)=@_;
-    my $dcount=$table->{$account}->{$desc}||
-	$table->{$account}->{'@@account default@@'};
+    my ($account,$amount,$desc,$table)=@_;
+    my $bracket=($amount<0?-1:1)*length(sprintf('%.2f',abs($amount)));
+    my $dcount=$table->{$account}->{$desc.'-'.$bracket}||
+	$table->{$account}->{'@@account default@@-'.$bracket};
     my $dest=(sort {$dcount->{$b} <=> $dcount->{$a}} 
 	      grep (!/total/, keys %{$dcount}))[0];
 
