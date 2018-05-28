@@ -35,7 +35,7 @@ sub parsefile{
 	    
 	}
 	$csv{note}=~s/\Q$csv{xnote}\E//;
-	print STDERR 'note: '.$csv{note}."\n";
+	#print STDERR 'note: '.$csv{note}."\n";
 	if ($csv{note}=~/^\s*\Q$ledger->{idtag}\E:\s+(\S+)/){
 	    my $key=$1;
 	    $ledger->{id}->{$key}=$csv{payee};
@@ -49,7 +49,6 @@ sub parsefile{
     }
     $tcsv->eof or $tcsv->error_diag();
     close($fd) unless $fd == $file;
-#    close($tranfd) if $tranfd;
     return $ledger;
 }
 
