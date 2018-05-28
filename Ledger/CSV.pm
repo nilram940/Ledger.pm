@@ -36,9 +36,8 @@ sub parsefile{
 	}
 	$csv{note}=~s/\Q$csv{xnote}\E//;
 	#print STDERR 'note: '.$csv{note}."\n";
-	if ($csv{note}=~/^\s*\Q$ledger->{idtag}\E:\s+(\S+)/){
-	    my $key=$1;
-	    $ledger->{id}->{$key}=$csv{payee};
+	if ($csv{key}){
+	    $ledger->{id}->{$csv{key}}=$csv{payee};
 	}
 	my $posting=$transaction->addPosting($csv{account}, $csv{amount}, 
 					     $csv{commodity}, '', $csv{note});
