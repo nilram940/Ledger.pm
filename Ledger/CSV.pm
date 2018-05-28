@@ -12,8 +12,6 @@ sub parsefile{
     my $transaction;
     my $id=-1;
     my $fd;
-#    my $trfile='';
-#    my $tranfd;
 	
     if (ref $file){
 	$fd=$file;
@@ -29,14 +27,6 @@ sub parsefile{
 	    }elsif($csv{state} eq '!'){
 		$state='pending';
 	    }
-	    # if ($transaction && $transaction->{'state'} ne 'cleared'){
-	    # 	if ($transaction->{file} ne $trfile){
-	    # 	    $trfile=$transaction->{file};
-	    # 	    close($tranfd) if $tranfd;
-	    # 	    open($tranfd,'<', $trfile);
-	    # 	}
-	    # 	$transaction->findtext($tranfd);
-	    # }
 	    $transaction=$ledger->addTransaction(str2time($csv{date}), 
 						 $state, $csv{code}, 
 						 $csv{payee},$csv{xnote});
@@ -45,6 +35,11 @@ sub parsefile{
 	    
 	}
 	$csv{note}=~s/\Q$csv{xnote}\E//;
+	print STDERR 'note: '.$csv{note}."\n";
+	if ($csv{note}=~/^\s*\Q$ledger->{idtag}\E:\s+(\S+)/){
+	    my $key=$1;
+	    $ledger->{id}->{$key}=$csv{payee};
+	}
 	my $posting=$transaction->addPosting($csv{account}, $csv{amount}, 
 					     $csv{commodity}, '', $csv{note});
 	$posting->{bpos}=$csv{bpos};

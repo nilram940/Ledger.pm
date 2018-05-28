@@ -2,6 +2,7 @@ package Ledger;
 use strict;
 use warnings;
 use Fcntl qw(SEEK_SET SEEK_CUR SEEK_END);
+use Storable;
 use Ledger::Transaction;
 use Ledger::OFX;
 use Ledger::XML;
@@ -12,10 +13,30 @@ sub new{
     my %args=@_;
     my $self={ transactions => [], 
 	       balance=>[]}; 
-    $self->{$_}=$args{$_}||{} foreach (qw( table id desc accounts));
+    $self->{$_}=$args{$_}||{} foreach (qw( idtag  payeetab ));
     bless $self, $class;
+    $self->{desc}=($args{payeetab} && (-f $args{payeetab}))
+	? retrieve($args{payeetab}):{};
+    $self->{accounts}=$args{accounttab}?$self->getacctnum($args{accounttab}):{};
+    $self->{id}={};
+    $self->{idtag}||='ID';
     return $self;
 }
+
+sub getacctnum{
+    my $self=shift;
+    my $accfile=shift;
+    my %num;
+    open (my $accounts,"<",$accfile) || die "Can't open $accfile: $!";
+    while (<$accounts>){
+	chomp;
+	s/ *$//;
+	%num=(%num,split(/ \| /));
+    }
+    close($accounts);
+    $self->{accounts}=\%num;
+}
+
 
 sub addTransaction{
     my $self=shift;
@@ -399,7 +420,7 @@ sub update1{
     
 sub update{
     my $self=shift;
-
+    store ($self->{desc}, $self->{payeetab}) if $self->{payeetab};
     my @edit;
     if ($self->{ofxfile}){
 	@edit=(grep { ( $_->{edit} || 
