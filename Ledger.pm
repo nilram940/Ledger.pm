@@ -20,6 +20,30 @@ sub new{
     $self->{accounts}=$args{accounttab}?$self->getacctnum($args{accounttab}):{};
     $self->{id}={};
     $self->{idtag}||='ID';
+    my $ledgerargs=$args{ledgerargs}?' '.$args{ledgerargs}:'';
+    my @fields=qw(id file bpos epos xnote key price date code payee account 
+    commodity amount state note); 
+    my $csvformat=
+	q["%(xact.id)","%S","%B","%E",].
+	q[%(quoted(xact.note)),].
+	q[%(quoted(meta("ID"))),].
+	q[%(quoted(quantity(scrub(price)))),];
+       # q[%(quoted(date)),].
+       # q[%(quoted(code)),].
+       # q[%(quoted(payee)),].
+       # q[%(quoted(display_account)),].
+       # q[%(quoted(commodity(scrub(display_amount)))),].
+       # q[%(quoted(quantity(scrub(display_amount)))),].
+       # q[%(quoted(cleared ? \"*\" : (pending ? \"!\" : \"\"))),].
+       # q[%(quoted(note)),].
+
+
+    my $csv=q(ledger csv  -E -L --prepend-format ').$csvformat.q(').
+	$ledgerargs;
+    print STDERR $csv."\n";
+    $self->fromCSV(\@fields, $csv,1);
+    $self->gentable;
+
     return $self;
 }
 
@@ -523,12 +547,16 @@ sub update_file{
     } 
     close($readh);
 
+    unless (@edit_trans){
+	close ($writeh);
+	return;
+    }
     print $writeh '; '.localtime."\n\n";
-
+    
     if ($ofx){
 	my @cleared=grep {$_->{state} eq 'cleared' } @edit_trans;
 	my @uncleared=grep {$_->{state} ne 'cleared' } @edit_trans;
-	   
+	
 	print $writeh join("\n",(map {$_->toString} 
 				 (sort {$a->{date} <=> $b->{date}} @cleared),
 				 (sort {$a->{date} <=> $b->{date}} 
@@ -540,6 +568,7 @@ sub update_file{
 				 (sort {$a->{date} <=> $b->{date}} 
 				  @edit_trans)))."\n\n";
     }
+ 
     close($writeh);
 
 }

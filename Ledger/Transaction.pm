@@ -155,6 +155,7 @@ sub checkpending{
            unless $candidate->{date} == $self->{date};
     $candidate->{date}=$self->{date};
     $candidate->{edit}=$self->{file};
+    $candidate->{edit_pos}=$self->{bpos};
     $self->getPosting(0)->{bpos}=$candidate->getPosting($match)->{bpos};
     $self->getPosting(0)->{epos}=$candidate->getPosting($match)->{epos};
     $candidate->setPosting($match, $self->getPosting(0));
