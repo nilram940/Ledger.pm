@@ -152,6 +152,10 @@ sub fromOFX{
 sub getTransactions{
     my $self=shift;
     my $filter=shift||'';
+    
+    if (ref($filter)){
+	return grep {&{$filter}($_)} @{$self->{transactions}};
+    }
     if ($filter eq 'cleared'){
 	return grep {$_->{state} eq 'cleared'} @{$self->{transactions}};
     }    
@@ -160,6 +164,9 @@ sub getTransactions{
     }
     if ($filter eq 'balance'){
 	return @{$self->{balance}};
+    }
+    if ($filter eq 'edit'){
+	return grep {$_->{edit} } @{$self->{transactions}};
     }
 
     return @{$self->{transactions}};

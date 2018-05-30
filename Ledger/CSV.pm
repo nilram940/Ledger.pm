@@ -39,8 +39,10 @@ sub parsefile{
 	if ($csv{key}){
 	    $ledger->{id}->{$csv{key}}=$csv{payee};
 	}
+	my $price=(($csv{commodity} eq '$') ? '' : $csv{price});
 	my $posting=$transaction->addPosting($csv{account}, $csv{amount}, 
-					     $csv{commodity}, '', $csv{note});
+					     $csv{commodity}, $price,
+					     $csv{note});
 	$posting->{bpos}=$csv{bpos};
 	$posting->{epos}=$csv{epos};
 	$transaction->{epos}=$csv{epos};
