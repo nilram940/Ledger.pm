@@ -24,8 +24,13 @@ sub new{
 
 sub findtext{
     my ($self, $fh)=@_;
-
+    my $close=0;
+    unless ($fh){
+	open($fh,'<',$self->{file}) || die "Can't open ".$self->{file}.": $!";
+	$close=1;
+    }
     #assume no bpos
+    
     my $len=200;
     my $bpos=$self->getPosting(0)->{bpos};
     unless ($bpos){
@@ -44,6 +49,7 @@ sub findtext{
     seek ($fh, $self->{bpos}, SEEK_SET);
     read $fh, (my $trstr), ($self->{epos}-$self->{bpos});
     $self->{text}=$trstr;
+    close($fh) if $close;
     return $self;
 }
 
@@ -154,14 +160,21 @@ sub checkpending{
     $candidate->{'aux-date'}=$candidate->{date} 
            unless $candidate->{date} == $self->{date};
     $candidate->{date}=$self->{date};
-    $candidate->{edit}=$self->{file};
-    $candidate->{edit_pos}=$self->{bpos};
+    $candidate->{edit}=$self->{edit}||$self->{file};
+    if ($self->{file}){
+	$self->findtext unless $self->{bpos};
+	$candidate->{edit_pos}=$self->{bpos};
+    }else{
+	$candidate->{edit_pos}=-1;
+    }
+    $candidate->{edit_end}=$self->{epos};
+    #$candidate->{edit_pos}=$self->{bpos};
     $self->getPosting(0)->{bpos}=$candidate->getPosting($match)->{bpos};
     $self->getPosting(0)->{epos}=$candidate->getPosting($match)->{epos};
     $candidate->setPosting($match, $self->getPosting(0));
     $candidate->getPosting(-1)->{quantity}='';
     %{$self}=%{$candidate};
-    #$self->{'edit'}=1;
+
     $candidate->{date} = 0;
     $candidate->{edit} = '';
     return 1;
