@@ -46,6 +46,9 @@ sub parsefile{
 	$posting->{bpos}=$csv{bpos};
 	$posting->{epos}=$csv{epos};
 	$transaction->{epos}=$csv{epos};
+	if ($csv{account}=~/^Equity:Transfers:(\w+)/){
+	    $transaction->{transfer}=$1;
+	}
 	$id=$csv{id};
     }
     $tcsv->eof or $tcsv->error_diag();
