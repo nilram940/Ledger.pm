@@ -185,12 +185,13 @@ sub getofxpos{
 			    $_->{file} eq $self->{ofxfile} &&
 			    $_->{state} ne 'cleared'} 
 		  @{$self->{transactions}});
+
     if (@pending){
 	my $pending=(sort {$a->{epos} <=> $b->{epos}} @pending)[0];
 	$pending->findtext;
 	$self->{ofxpos}=$pending->{bpos};
     }else{
-	$self->{ofxpos}=-s $self->{ofxfile}
+	$self->{ofxpos}=(stat($self->{ofxfile}))[7];
     }
 }		  
 		  
@@ -473,18 +474,9 @@ sub update1{
 sub update{
     my $self=shift;
     store ($self->{desc}, $self->{payeetab}) if $self->{payeetab};
-    my @edit;
-    if ($self->{ofxfile}){
-	@edit=(grep { ( $_->{edit} || 
-			($_->{date}>0 && 
-			 $_->{state} ne 'cleared' && 
-			 $_->{file} eq $self->{ofxfile}))}
+    
+    my @edit=(grep { $_->{edit} }
 	       @{$self->{transactions}});
-	
-    }else{
-	@edit=(grep { $_->{edit} }
-	       @{$self->{transactions}});
-    }
 
     my $file='';
     my $fd;
@@ -517,64 +509,33 @@ sub update_file{
     my $file=shift;
     my $ofx=($self->{ofxfile} && $self->{ofxfile} eq $file);
     
-    # my @file_trans;
-    # if ($ofx){
-    # 	@file_trans= (grep {($_->{file} eq $file) &&
-    # 				$_->{bpos} &&
-    # 				($_->{edit} ||
-    # 				 ($_->{date} >0 && 
-    # 				  $_->{state} ne 'cleared'))}
-    # 		      @{$self->{transactions}});
-    # }else{
-    # 	@file_trans= (grep {($_->{edit} &&
-    # 			     ($_->{bpos}  &&
-    # 			      $_ ->{file} &&
-    # 			      $_->{file} eq $file)|| 
-    # 			     ($_->{edit} eq $file))}
-    # 		      @{$self->{transactions}});
-    # }
-    my @append;
- 
-    if($ofx){ 
-	@append= (grep {($_->{edit} && 
-			     $_->{edit} eq $file) }
-		      @{$self->{transactions}});
-    }else{
-	@append= (grep {($_->{edit} && 
-			     $_->{edit} eq $file &&
-			     $_->{edit_pos}<0)}
-		      @{$self->{transactions}});
-    }
+    my @edit= (grep {$_->{edit} &&
+			 (($_->{file} && 
+			   $_->{file} eq $file) ||
+			  $_->{edit} eq $file)}
+	       @{$self->{transactions}});
+    my @append=grep {$_->{edit_pos}<0} @edit;
 
-    my %posmap;
-
-    foreach my $t (@{$self->{transactions}}){
-	my $pos;
-	if ($ofx){
-	    if (($t->{file} && $t->{file} eq $file && 
-		 ($t->{edit} ||
-		  ($t->{date}>0 &&
-		   $t->{state} ne 'cleared')))){
-		$pos=$t->{bpos};
-	    }
-	}elsif ($t->{edit}) {
-	    if ($t->{edit} eq $file){
-		$pos =$t->{edit_pos}
-	    }
-	    if ($t->{file} && $t->{file} eq $file){
-		$pos=$t->{bpos};
-	    }
+    my $posfilter=sub {
+    	my $t=shift;
+    	my %pos=();
+	unless ($t->{edit}){
+	    print STDERR "edit=".$t->toString."\n";
 	}
-	if ($pos && $pos>=0){
-	    $posmap{$pos}=$t; 
-	}
-	$pos=-1;
-
-    }
-		
-		
-
+    	if ($t->{edit} eq $file){
+    	    $pos{$t->{edit_pos}}=$t;
+    	}
+    	if ($t->{file} && $t->{file} eq $file){
+    	    $pos{$t->{bpos}}=$t;
+    	}
+    	%pos;
+    };
     
+    my %posmap = map { &{$posfilter}($_) }  (grep {$_->{edit_pos}>=0} @edit);
+
+    if ($ofx && @append){
+	$posmap{$self->{ofxpos}}=-1;
+    }
     my $lastpos=0;
     print STDERR "file=$file\n";
     rename($file,"$file.bak");
@@ -584,26 +545,40 @@ sub update_file{
     foreach my $pos (sort {$a <=> $b} (keys %posmap)){
 	my $transaction=$posmap{$pos};
 	
-	unless ($transaction->{bpos}>0){
-	    print STDERR $transaction->toString.'\n';
-	}
+	# unless ($transaction->{bpos}>0){
+	#     print STDERR $transaction->toString.'\n';
+	# }
 	
-	if ($pos>=0){
-	    my $len=$pos-$lastpos-1;
-	    seek ($readh, $lastpos, SEEK_SET);   # read from last read
-	    read $readh, (my $buffer), $len;     #  to beginning of transaction 
-	    print $writeh $buffer;               # copy to new file
+	my $len=$pos-$lastpos-1;
+	seek ($readh, $lastpos, SEEK_SET);   # read from last read
+	read $readh, (my $buffer), $len;     #  to beginning of transaction 
+	print $writeh $buffer;               # copy to new file
 
-	    
+	
+	if (ref($transaction)){
 	    $lastpos=(($pos==$transaction->{bpos})?
 		      $transaction->{epos}:
 		      $transaction->{edit_end});
-	    if (!$ofx && 
-		($transaction -> {edit} eq $file) && 
+	    if (($transaction -> {edit} eq $file) && 
 		($transaction->{edit_pos} == $pos)) {
 		print $writeh "\n".$transaction->toString();
 	    }
+	}elsif($ofx){
+	    my @cleared=grep {$_->{state} eq 'cleared' } @append;
+	    my @uncleared=grep {$_->{state} ne 'cleared' } @append;
+	    print $writeh "\n; ".localtime."\n\n";
+
+	    print $writeh join("\n",(map {$_->toString} 
+				 (sort {$a->{date} <=> $b->{date}} @cleared),
+				     (sort {$a->{date} <=> $b->{date}} 
+				      @{$self->{balance}}),
+				     (sort {$a->{date} <=> $b->{date}} 
+				      @uncleared)))."\n\n";
+	    @append=();
+	    $lastpos=$pos;
 	}
+	
+	    
     }
     # copy to end of file.
     seek ($readh, $lastpos, SEEK_SET);
@@ -621,23 +596,11 @@ sub update_file{
 	return;
     }
     print $writeh '; '.localtime."\n\n";
-    
-    if ($ofx){
-	my @cleared=grep {$_->{state} eq 'cleared' } @append;
-	my @uncleared=grep {$_->{state} ne 'cleared' } @append;
-	
-	print $writeh join("\n",(map {$_->toString} 
-				 (sort {$a->{date} <=> $b->{date}} @cleared),
-				 (sort {$a->{date} <=> $b->{date}} 
-				  @{$self->{balance}}),
-				 (sort {$a->{date} <=> $b->{date}} 
-				  @uncleared)))."\n\n";
-    }else{
-	print $writeh join("\n",(map {$_->toString} 
-				 (sort {$a->{date} <=> $b->{date}} 
-				  @append)))."\n\n";
-    }
- 
+
+    print $writeh join("\n",(map {$_->toString} 
+			     (sort {$a->{date} <=> $b->{date}} 
+			      @append)))."\n\n";
+
     close($writeh);
 
 }

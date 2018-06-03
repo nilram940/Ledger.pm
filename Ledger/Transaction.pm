@@ -125,8 +125,8 @@ sub balance{
 				  $self->{postings}->[0]->{quantity},
 				  $self->{payee},
 				  $table);
-    $self->addPosting($account,undef,undef,undef,"INFO: UNKNOWN ($prob)")
-	
+    my $info=$prob>0?"INFO: UNKNOWN ($prob%)":'';
+    $self->addPosting($account,undef,undef,undef,$info)
 	
 }
 
@@ -189,7 +189,10 @@ sub finddest{
     my $dest=(sort {$dcount->{$b} <=> $dcount->{$a}} 
 	      grep (!/total/, keys %{$dcount}))[0];
 
-    my $prob=$dest?sprintf("%.2f%%",100*$dcount->{$dest}/$dcount->{total}):0;
+    my $prob=$dest?sprintf("%.2f",100*$dcount->{$dest}/$dcount->{total}):0;
+    if ($prob > 99.99999 && $dcount->{total}>12){
+	$prob=-$prob;
+    }
     return ($dest,$prob);
 }
 
