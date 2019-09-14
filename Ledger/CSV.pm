@@ -1,18 +1,18 @@
 package Ledger::CSV;
 use warnings;
 use strict;
-#use Data::Dumper;
 use Date::Parse;
 use Text::CSV;
 
 sub parsefile{
-    my ($ledger,$fields,$file)=@_;
-    my $tcsv=Text::CSV->new({escape_char => '\\'});
+    my ($file,$args)=@_;
+    my $fields=$args->{fields};
+    my $csvargs=$args->{csv_args}||{};
+    my $tcsv=Text::CSV->new($csvargs);
     my %csv;
-    my $transaction;
-    my $id=-1;
     my $fd;
-	
+    my @trlist;
+    
     if (ref $file){
 	$fd=$file;
     }else{
@@ -20,40 +20,15 @@ sub parsefile{
     }
     while(my $row=$tcsv->getline($fd)){
 	@csv{@{$fields}}=@$row;
-	if ($csv{id} != $id ){
-	    my $state;
-	    if ($csv{state} eq '*'){
-		$state='cleared';
-	    }elsif($csv{state} eq '!'){
-		$state='pending';
-	    }
-	    $transaction=$ledger->addTransaction(str2time($csv{date}), 
-						 $state, $csv{code}, 
-						 $csv{payee},$csv{xnote});
-	    $transaction->{id}=$csv{id};
-	    $transaction->{file}=$csv{file};
-	    
-	}
-	$csv{note}=~s/\Q$csv{xnote}\E//;
-	#print STDERR 'note: '.$csv{note}."\n";
-	if ($csv{key}){
-	    $ledger->{id}->{$csv{key}}=$csv{payee};
-	}
-	my $price=(($csv{commodity} eq '$') ? '' : $csv{price});
-	my $posting=$transaction->addPosting($csv{account}, $csv{amount}, 
-					     $csv{commodity}, $price,
-					     $csv{note});
-	$posting->{bpos}=$csv{bpos};
-	$posting->{epos}=$csv{epos};
-	$transaction->{epos}=$csv{epos};
-	if ($csv{account}=~/^Equity:Transfers:(\w+)/){
-	    $transaction->{transfer}=$1;
-	}
-	$id=$csv{id};
+	$csv{date}=str2time($csv{date});
+	$csv{quantity}=~s/^.*\$//;
+	$csv{quantity}=-$csv{quantity} if $args->{reverse};
+	push @trlist,{%csv};
     }
+
     $tcsv->eof or $tcsv->error_diag();
-    close($fd) unless $fd == $file;
-    return $ledger;
+    close($fd) unless $fd eq $file;
+    return (transactions=>\@trlist);
 }
 
 sub ledgerCSV{

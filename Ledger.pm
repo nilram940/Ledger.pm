@@ -64,13 +64,8 @@ sub fromXML{
 }
 
 sub fromCSV{
-    my $self=shift;
-    my ($fields, $file, $pipe)=@_;
-    my $dir=$pipe?'-|':'<';
-    open(my $csv, $dir, $file) || die qq(Can't open csv "$file" : $!);
-    Ledger::CSV::parsefile($self,$fields, $csv);
-    close($csv);
-    return $self;
+    my ($file, $csv)=@_;
+    return Ledger::CSV::parsefile($file, $csv);
 }
 	
 sub fromStmt{
@@ -81,11 +76,20 @@ sub fromStmt{
     my $self=shift;
     my $stmt=shift;
     my $handlers=shift;
-    my %trdat=&fromOFX2($stmt);
+    my $csv=shift;
+    my %trdat;
+
 
     my $account=$stmt;
     $account=~s/-.*//;
     $account=~s!.*/!!;
+
+    if ($stmt=~/.ofx$/i){
+	%trdat=&fromOFX2($stmt);
+    }elsif ($stmt=~/.csv$/i){
+	%trdat=&fromCSV($stmt,$csv->{$account});
+    }
+
     my $code=(split(/:/,$account))[-1];
     
     unless ($self->{ofxfile}){
@@ -101,6 +105,7 @@ sub fromStmt{
 	    $self->{desc}->{$payee}=$self->{id}->{$key};
 	    next;
 	}
+	next if ($stmttrn->{quantity} == 0);
 	my $handler=$handlers->{$account}->{$payee}||
 	    $handlers->{$account}->{$self->{desc}->{$payee}||""};
 
