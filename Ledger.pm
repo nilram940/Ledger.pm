@@ -21,29 +21,9 @@ sub new{
     $self->{id}={};
     $self->{payeetab}=$args{payeetab};
     $self->{idtag}=$args{idtag} || 'ID';
-    my @fields=qw(id file bpos epos xnote key price date code payee account 
-    commodity amount state note); 
-    my $csvformat=
-	q["%(xact.id)","%S","%B","%E",].
-	q[%(quoted(xact.note)),].
-	q[%(quoted(meta("ID"))),].
-	q[%(quoted(quantity(scrub(price)))),];
-       # q[%(quoted(date)),].
-       # q[%(quoted(code)),].
-       # q[%(quoted(payee)),].
-       # q[%(quoted(display_account)),].
-       # q[%(quoted(commodity(scrub(display_amount)))),].
-       # q[%(quoted(quantity(scrub(display_amount)))),].
-       # q[%(quoted(cleared ? \"*\" : (pending ? \"!\" : \"\"))),].
-       # q[%(quoted(note)),].
+    
+    Ledger::CSV::ledgerCSV($self, $args{file});
 
-    my $ledgerargs=q( -E -L --prepend-format ') .$csvformat.q(');
-    $ledgerargs.=' -f  "'. $args{file}.'"' if $args{file};
-	
-    my $csv=q(ledger csv).$ledgerargs;
-
-    print STDERR $csv."\n";
-    $self->fromCSV(\@fields, $csv,1);
     $self->gentable;
 
     return $self;
