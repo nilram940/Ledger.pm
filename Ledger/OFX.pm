@@ -24,6 +24,15 @@ my $xml;
 my @xml;
 my $data;
 
+sub parsefile{
+    my $file=shift;
+    local ($/);
+    open (my $ofxh, '<', $file) || die "Can't open $file: $!"; 
+    my $dat=&parse(<$ofxh>);
+    close($ofxh);
+    return $dat;
+}
+
 sub parse{
     my $text=shift;
     my $dat={};

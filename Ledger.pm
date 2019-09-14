@@ -73,6 +73,114 @@ sub fromCSV{
     return $self;
 }
 	
+sub fromStmt{
+    # read Stmt and convert to Ledger data structure.
+    # expects files to be named $account-$data.$type
+    # Supports OFX
+    
+    my $self=shift;
+    my $stmt=shift;
+    my $handlers=shift;
+    my %trdat=&fromOFX2($stmt);
+
+    my $account=$stmt;
+    $account=~s/-.*//;
+    $account=~s!.*/!!;
+    my $code=(split(/:/,$account))[-1];
+    
+    unless ($self->{ofxfile}){
+	$self->{ofxfile}=($self->getTransactions('cleared'))[-1]->{file};
+	$self->getofxpos;
+    }
+    my $count=0;
+    
+    foreach my $stmttrn (@{$trdat{transactions}}){
+	my $key=&makeid($code,$stmttrn);
+	my $payee=$stmttrn->{payee};
+	if ($self->{id}->{$key}){
+	    $self->{desc}->{$payee}=$self->{id}->{$key};
+	    next;
+	}
+	my $handler=$handlers->{$account}->{$payee}||
+	    $handlers->{$account}->{$self->{desc}->{$payee}||""};
+
+	if ($handler && ref ($handler) eq 'HASH'){
+	    $payee=$handler->{payee}; 
+	}
+	elsif ($self->{desc}->{$payee}){
+	    $payee=$self->{desc}->{$payee};
+	}
+	
+	my $transaction=new Ledger::Transaction 
+	    ($stmttrn->{date}, "cleared", $stmttrn->{number}, 
+	     $payee);
+	$transaction->{edit}=$self->{ofxfile};
+	$transaction->{edit_pos}=-1;
+	
+	$transaction->addPosting($account, $stmttrn->{quantity},
+				 $stmttrn->{commodity},
+				 $stmttrn->{cost},"ID: $key");
+	if ($handler){
+	    if (ref ($handler) eq 'HASH'){
+		$transaction=$self->transfer($transaction,$handler->{transfer})
+	    }else{
+		$transaction=&{$handler}($transaction);
+	    }
+	}
+	if ($transaction){
+	    $transaction->balance($self->{table},
+				  $self->getTransactions('uncleared'));
+	    $self->addTransaction($transaction);
+	    $count++;
+	}
+
+
+    }
+    if($count){
+	my $payee=(split(/:/, $account))[-1];
+	$payee.=' Balance';
+	my $balance=$trdat{balance};
+    
+	my $transaction=new Ledger::Transaction
+	    ($balance->{date},"cleared",undef,$payee);
+
+	$transaction->addPosting($account,$balance->{quantity},$balance->{commodity},'BAL');
+	$self->addTransaction($transaction);
+    }
+    return $self;
+
+
+}
+
+sub fromOFX2{
+    my $ofxfile=shift;
+    my $ofxdat=Ledger::OFX::parsefile($ofxfile);
+    my %trlist=();
+    $trlist{transactions}=[];
+    
+    foreach my $stmttrn (@{$ofxdat->{transactions}}){
+	my $trans={};
+
+	if ($stmttrn->{commodity}){
+	    $trans->{commodity}=$ofxdat->{ticker}->{$stmttrn->{commodity}};
+	}
+
+	my @copy=qw(payee quantity cost id date number);
+	@{$trans}{@copy}= @{$stmttrn}{@copy};
+	push @{$trlist{transactions}}, $trans;
+    }
+    my $balance={};
+    my $ofxbal=$ofxdat->{balance};
+    
+    if ($ofxbal->{commodity}){
+	$balance->{commodity}=$ofxdat->{ticker}->{$ofxbal->{commodity}};
+    }
+    $balance->{date}=$ofxbal->{date};
+    $balance->{quantity}=$ofxbal->{quantity};
+    $trlist{balance}=$balance;
+    
+    return %trlist
+}
 
 sub fromOFX{
     my $self=shift;
@@ -224,6 +332,16 @@ sub transfer{
 	$transaction->addPosting($account);
     }	
     return $transaction;
+}
+
+sub makeid{
+    my $account=shift;
+    my $trdat=shift;
+    my $code=(split(/:/,$account))[-1];
+    $code=join ("", (map {substr ($_,0,1)} split (/\s+/, $code)));
+    
+    return "$code-".$trdat->{id} if $trdat->{id};
+    return "$code-".$trdat->{date}."+".$trdat->{quantity};
 }
 
 sub getaccount{
