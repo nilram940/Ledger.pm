@@ -7,6 +7,7 @@ use Ledger::Transaction;
 use Ledger::OFX;
 use Ledger::XML;
 use Ledger::CSV;
+use POSIX qw(strftime);
 
 sub new{
     my $class=shift;
@@ -350,7 +351,8 @@ sub makeid{
     $code=join ("", (map {substr ($_,0,1)} split (/\s+/, $code)));
     
     return "$code-".$trdat->{id} if $trdat->{id};
-    return "$code-".$trdat->{date}."+".$trdat->{quantity};
+    return "$code-".strftime('%Y/%m/%d', localtime $trdat->{date}).
+	'+$'.sprintf('%.02f',$trdat->{quantity});
 }
 
 sub getaccount{
