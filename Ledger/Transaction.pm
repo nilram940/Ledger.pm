@@ -126,6 +126,12 @@ sub balance{
 				  $self->{payee},
 				  $table);
     my $info=$prob>0?"INFO: UNKNOWN ($prob%)":'';
+    unless($account){
+	$account=($self->{postings}->[0]->{quantity}>0)?
+	    'Income:Miscellaneous':
+	    'Expenses:Miscellaneous';
+	$info="INFO: UNKNOWN (0.00%)";
+    }
     $self->addPosting($account,undef,undef,undef,$info)
 	
 }

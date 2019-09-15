@@ -13,7 +13,6 @@ sub new{
     my %args=@_;
     my $self={ transactions => [], 
 	       balance=>[]}; 
-    #$self->{$_}=$args{$_}||'' foreach (qw( idtag  payeetab ));
     bless $self, $class;
     $self->{desc}=($args{payeetab} && (-f $args{payeetab}))
 	? retrieve($args{payeetab}):{};
@@ -109,6 +108,11 @@ sub fromStmt{
 	my $handler=$handlers->{$account}->{$payee}||
 	    $handlers->{$account}->{$self->{desc}->{$payee}||""};
 
+	unless ($handler){
+	    my $key=(split(/\s+/,$payee))[0];
+	    $handler=$handlers->{$account}->{$key}||'';
+	}
+	
 	if ($handler && ref ($handler) eq 'HASH'){
 	    $payee=$handler->{payee}; 
 	}
