@@ -347,12 +347,20 @@ sub transfer{
 sub makeid{
     my $account=shift;
     my $trdat=shift;
-    my $code=(split(/:/,$account))[-1];
-    $code=join ("", (map {substr ($_,0,1)} split (/\s+/, $code)));
+    my $id=(split(/:/,$account))[-1];
+    $id=join ("", (map {substr ($_,0,1)} split (/\s+/, $id)));
+    $id.='-';
     
-    return "$code-".$trdat->{id} if $trdat->{id};
-    return "$code-".strftime('%Y/%m/%d', localtime $trdat->{date}).
-	'+$'.sprintf('%.02f',$trdat->{quantity});
+    if ($trdat->{id}){
+	$id.=$trdat->{id};
+	if ($account =~ /Discover/){
+	    substr($id,-5,5,'0');
+	}
+    }else{
+	$id.=strftime('%Y/%m/%d', localtime $trdat->{date}).
+	    '+$'.sprintf('%.02f',$trdat->{quantity});
+    }
+    return $id;
 }
 
 sub getaccount{
