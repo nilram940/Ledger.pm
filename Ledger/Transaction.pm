@@ -249,7 +249,7 @@ sub distance{
     my $payee=lc(substr $self->{payee},0,$len);
     #print STDERR $payee."\n";
     $subdist=Text::Levenshtein::distance($payee,lc($comp->{payee}));
-    $subdist=10*$subdist/$len;
+    $subdist=$subdist/$len;
     $dist+=$subdist*$subdist;
 				
     return sqrt($dist), $num;

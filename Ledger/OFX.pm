@@ -166,7 +166,11 @@ sub stmttrn{
     @tran{qw(type quantity id number)}=
 	@{$arg}{qw(trntype trnamt fitid checknum)};
     $tran{date}=&getdate($arg->{dtposted});
-    $tran{payee}=$arg->{memo}||$arg->{name};
+    if ($arg->{memo} && $arg->{memo} !~/^\d+$/){
+	$tran{payee}=$arg->{memo};
+    }else{
+	$tran{payee}=$arg->{name};
+    }
     push @{$data->{transactions}},{%tran};
 }
 
