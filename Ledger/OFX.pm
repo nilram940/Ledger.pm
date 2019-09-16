@@ -34,19 +34,12 @@ sub parsefile{
 }
 
 sub parse{
-    my $text=shift;
-    my $dat={};
+    my $body=shift;
     my %header=();
-    $text=~s/\r//g;
-    my ($header,$body)=split(/<OFX>/,$text,2);
-    $body='<OFX>'.$body;
-
-    #$body=~s/^\s+//;
-    #$body=~s/\s+$//;
-    #$body=~s/>\s+/>/g;
+    my $header=substr $body,0,(index $body,'<'),'';
+    
     return &parsebody($body);
 
-    #return $dat;
 }
 
 sub parsebody{
@@ -71,23 +64,24 @@ sub parsebody{
 		     &end(\@context,$etag);
 		     
 		}
+		last if ($tag eq 'ofx');
 	    }else{
 		&start(\@context,$tag);
 
 		push @context,$tag;
 		
 	    }
-	}elsif($body=~/\S/){
+	}else{#if($body=~/\S/){
 	    #char
 	    my $start=index $body,'<';
 	    my $str=substr $body,0,$start,'';
 	    $str=~s/&(\w+);/$XML{$1}/ge;
 	    $str=~s/\s+$//g;
 	    &char(\@context,$str);
-	    if ($body !~ m@^</@){
-		my $tag=pop(@context);
-		&end(\@context,$tag);
-	    }
+	    # if ($body !~ m@^</@){
+	    # 	my $tag=pop(@context);
+	    # 	&end(\@context,$tag);
+	    # }
 	   
 
 	}

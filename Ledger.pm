@@ -90,8 +90,6 @@ sub fromStmt{
 	%trdat=&fromCSV($stmt,$csv->{$account});
     }
 
-    my $code=(split(/:/,$account))[-1];
-    
     unless ($self->{ofxfile}){
 	$self->{ofxfile}=($self->getTransactions('cleared'))[-1]->{file};
 	$self->getofxpos;
@@ -99,7 +97,7 @@ sub fromStmt{
     my $count=0;
     
     foreach my $stmttrn (@{$trdat{transactions}}){
-	my $key=&makeid($code,$stmttrn);
+	my $key=&makeid($account,$stmttrn);
 	my $payee=$stmttrn->{payee};
 	if ($self->{id}->{$key}){
 	    $self->{desc}->{$payee}=$self->{id}->{$key};
@@ -159,6 +157,58 @@ sub fromStmt{
     }
     return $self;
 
+
+}
+sub addStmtTran{
+    my $self=shift;
+    my $account=shift;
+    my $handlers=shift;
+    my $stmttrn=shift;
+    
+    my $key=&makeid($account,$stmttrn);
+    my $payee=$stmttrn->{payee};
+
+    if ($self->{id}->{$key}){
+	$self->{desc}->{$payee}=$self->{id}->{$key};
+	return;
+    }
+    return if ($stmttrn->{quantity} == 0);
+    my $handler=$handlers->{$account}->{$payee}||
+	$handlers->{$account}->{$self->{desc}->{$payee}||""};
+    
+    unless ($handler){
+	my $key=(split(/\s+/,$payee))[0];
+	$handler=$handlers->{$account}->{$key}||'';
+    }
+	
+    if ($handler && ref ($handler) eq 'HASH'){
+	$payee=$handler->{payee}; 
+    }elsif ($self->{desc}->{$payee}){
+	$payee=$self->{desc}->{$payee};
+    }
+	
+    my $transaction=new Ledger::Transaction 
+	($stmttrn->{date}, "cleared", $stmttrn->{number}, 
+	 $payee);
+    $transaction->{edit}=$self->{ofxfile};
+    $transaction->{edit_pos}=-1;
+    
+    $transaction->addPosting($account, $stmttrn->{quantity},
+			     $stmttrn->{commodity},
+			     $stmttrn->{cost},"ID: $key");
+    if ($handler){
+	if (ref ($handler) eq 'HASH'){
+	    $transaction=$self->transfer($transaction,$handler->{transfer})
+	}else{
+	    $transaction=&{$handler}($transaction);
+	}
+    }
+    if ($transaction){
+	$transaction->balance($self->{table},
+			      $self->getTransactions('uncleared'));
+	$self->addTransaction($transaction);
+    }
+    return $transaction;
 
 }
 
