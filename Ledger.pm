@@ -84,7 +84,7 @@ sub fromStmt{
     $account=~s/-.*//;
     $account=~s!.*/!!;
 
-    if ($stmt=~/.ofx$/i){
+    if ($stmt=~/.[oq]fx$/i){
 	%trdat=&fromOFX2($stmt);
     }elsif ($stmt=~/.csv$/i){
 	%trdat=&fromCSV($stmt,$csv->{$account});
@@ -153,7 +153,7 @@ sub fromStmt{
 	    ($balance->{date},"cleared",undef,$payee);
 
 	$transaction->addPosting($account,$balance->{quantity},$balance->{commodity},'BAL');
-	$self->addTransaction($transaction);
+	push @{$self->{balance}},$transaction;
     }
     return $self;
 

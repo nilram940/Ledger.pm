@@ -78,10 +78,10 @@ sub parsebody{
 	    $str=~s/&(\w+);/$XML{$1}/ge;
 	    $str=~s/\s+$//g;
 	    &char(\@context,$str);
-	    # if ($body !~ m@^</@){
-	    # 	my $tag=pop(@context);
-	    # 	&end(\@context,$tag);
-	    # }
+	    if ($body !~ m@^</@){
+	     	my $tag=pop(@context);
+	     	&end(\@context,$tag);
+	    }
 	   
 
 	}
