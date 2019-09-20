@@ -56,6 +56,18 @@ sub addTransaction{
     return $transaction;
 }
 
+sub addBalance{
+    my $self=shift;
+    my $transaction;
+    if (ref $_[0]){
+	$transaction=shift;
+    }else{
+	$transaction=new Ledger::Transaction(@_);
+    }
+    push @{$self->{balance}},$transaction;
+    return $transaction;
+}
+
 sub fromXML{
     my $self=shift;
     my $xml=shift;
