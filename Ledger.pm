@@ -13,7 +13,7 @@ sub new{
     my $class=shift;
     my %args=@_;
     my $self={ transactions => [], 
-	       balance=>[]}; 
+	       balance=>{}}; 
     bless $self, $class;
     $self->{desc}=($args{payeetab} && (-f $args{payeetab}))
 	? retrieve($args{payeetab}):{};
@@ -58,14 +58,19 @@ sub addTransaction{
 
 sub addBalance{
     my $self=shift;
+    my $account=shift;
     my $transaction;
     if (ref $_[0]){
 	$transaction=shift;
     }else{
 	$transaction=new Ledger::Transaction(@_);
     }
-    push @{$self->{balance}},$transaction;
-    return $transaction;
+    unless ($self->{balance}->{$account} &&
+	$transaction->{date}< $self->{balance}->{$account}->{date}){
+	$self->{balance}->{$account}=$transaction;
+
+    }
+    return $self->{balance}->{$account};
 }
 
 sub fromXML{
@@ -115,6 +120,7 @@ sub fromStmt{
 	    $self->{desc}->{$payee}=$self->{id}->{$key};
 	    next;
 	}
+	$self->{id}->{$key}=$payee;
 	next if ($stmttrn->{quantity} == 0);
 	my $handler=$handlers->{$account}->{$payee}||
 	    $handlers->{$account}->{$self->{desc}->{$payee}||""};
@@ -165,7 +171,7 @@ sub fromStmt{
 	    ($balance->{date},"cleared",undef,$payee);
 
 	$transaction->addPosting($account,$balance->{quantity},$balance->{commodity},'BAL');
-	push @{$self->{balance}},$transaction;
+	$self->addBalance($account,$transaction);
     }
     return $self;
 
@@ -369,7 +375,7 @@ sub getTransactions{
 	return grep {$_->{state} ne 'cleared'} @{$self->{transactions}};
     }
     if ($filter eq 'balance'){
-	return @{$self->{balance}};
+	return (values %{$self->{balance}});
     }
     if ($filter eq 'edit'){
 	return grep {$_->{edit} } @{$self->{transactions}};
@@ -470,7 +476,7 @@ sub gentable {
 
 sub toString{
     my $self=shift;
-    my $str=join("\n\n",map {$_->toString} (sort {$a->{date} <=> $b->{date}} @{$self->{transactions}}),(sort {$a->{date} <=> $b->{date}} @{$self->{balance}}));
+    my $str=join("\n\n",map {$_->toString} (sort {$a->{date} <=> $b->{date}} @{$self->{transactions}}),(sort {$a->{date} <=> $b->{date}} (values %{$self->{balance}})));
     $str.="\n\n";
     return $str;
 }
@@ -631,7 +637,7 @@ sub update_file{
 	    print $writeh join("\n",(map {$_->toString} 
 				 (sort {$a->{date} <=> $b->{date}} @cleared),
 				     (sort {$a->{date} <=> $b->{date}} 
-				      @{$self->{balance}}),
+				      (values %{$self->{balance}})),
 				     (sort {$a->{date} <=> $b->{date}} 
 				      @uncleared)))."\n\n";
 	    @append=();
