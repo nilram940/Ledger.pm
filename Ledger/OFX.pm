@@ -162,6 +162,10 @@ sub stmttrn{
     my %tran;
     @tran{qw(type quantity id number)}=
 	@{$arg}{qw(trntype trnamt fitid checknum)};
+    if (! $tran{number} && $tran{type} eq 'ATM'){
+	$tran{number}='ATM';
+    }
+
     $tran{date}=&getdate($arg->{dtposted});
     if ($arg->{memo} && $arg->{memo} !~/^\d+$/){
 	$tran{payee}=$arg->{memo};
