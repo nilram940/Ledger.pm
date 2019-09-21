@@ -102,6 +102,8 @@ sub fromStmt{
     $account=~s!.*/!!;
     $account=~s/\..*//;
 
+    my $callback=sub{ $self->addStmtTran($account,$handlers,@_)};
+
     if ($stmt=~/.[oq]fx$/i){
 	%trdat=&fromOFX2($stmt);
     }elsif ($stmt=~/.csv$/i){
@@ -187,6 +189,7 @@ sub addStmtTran{
     my $key=&makeid($account,$stmttrn);
     my $payee=$stmttrn->{payee};
 
+    
     if ($self->{id}->{$key}){
 	$self->{desc}->{$payee}=$self->{id}->{$key};
 	return;
@@ -212,9 +215,9 @@ sub addStmtTran{
     $transaction->{edit}=$self->{ofxfile};
     $transaction->{edit_pos}=-1;
     
-    $transaction->addPosting($account, $stmttrn->{quantity},
-			     $stmttrn->{commodity},
-			     $stmttrn->{cost},"ID: $key");
+    my $posting=$transaction->addPosting($account, $stmttrn->{quantity},
+					 $stmttrn->{commodity},
+					 $stmttrn->{cost},"ID: $key");
     if ($handler){
 	if (ref ($handler) eq 'HASH'){
 	    $transaction=$self->transfer($transaction,$handler->{transfer})
@@ -227,7 +230,8 @@ sub addStmtTran{
 			      $self->getTransactions('uncleared'));
 	$self->addTransaction($transaction);
     }
-    return $transaction;
+    $posting=undef unless ($stmttrn->{commodity}=~/^\d+$/);
+    return ($transaction,$posting);
 
 }
 

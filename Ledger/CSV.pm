@@ -21,6 +21,7 @@ sub parsefile{
     while(my $row=$tcsv->getline($fd)){
 	@csv{@{$fields}}=@$row;
 	$csv{date}=str2time($csv{date});
+	next unless $csv{quantity};
 	$csv{quantity}=~s/^.*\$//;
 	$csv{quantity}=-$csv{quantity} if $args->{reverse};
 	push @trlist,{%csv};

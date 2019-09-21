@@ -42,10 +42,16 @@ sub findtext{
 	$len+=$pos;
 	$pos=0;
     }
+    #read $len bytes prior to begining of first posting
+    #from file and find the last newline
     seek ($fh, $pos, SEEK_SET);
     read $fh, (my $str), $len-1; 
     my $idx=rindex $str,"\n";
+
+    #set character after last newline as beginning of transaction.
     $self->{bpos}=$pos+$idx+1;
+    
+    # read characters between bpos and epos as transaction text;
     seek ($fh, $self->{bpos}, SEEK_SET);
     read $fh, (my $trstr), ($self->{epos}-$self->{bpos});
     $self->{text}=$trstr;
@@ -170,7 +176,7 @@ sub checkpending{
 	    $candidate->{edit_end}=$candidate->{epos};
 	    $candidate->setPosting($match, 
 				   'Equity:Transfers:'.$self->{transfer});
-	    return 1
+	    return 1;
 	}
     }
 
