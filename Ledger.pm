@@ -100,6 +100,7 @@ sub fromStmt{
     my $account=$stmt;
     $account=~s/-.*//;
     $account=~s!.*/!!;
+    $account=~s/\..*//;
 
     if ($stmt=~/.[oq]fx$/i){
 	%trdat=&fromOFX2($stmt);
@@ -230,11 +231,15 @@ sub addStmtTran{
 
 }
 
+
 sub fromOFX2{
     my $ofxfile=shift;
     my $ofxdat=Ledger::OFX::parsefile($ofxfile);
     my %trlist=();
-    $trlist{transactions}=[];
+    $trlist{transactions}=$ofxdat->{transactions};
+    $trlist{balance}=$ofxdat->{balance};
+    return %trlist;
+
     
     foreach my $stmttrn (@{$ofxdat->{transactions}}){
 	my $trans={};

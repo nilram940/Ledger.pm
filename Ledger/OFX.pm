@@ -139,6 +139,9 @@ sub end{
 }
 
 sub stop{
+    foreach my $tran(@{$data->{check}}){
+	$tran->{commodity}=$data->{ticker}->{$tran->{commodity}};
+    }
     return $data;
 }
 
@@ -171,16 +174,26 @@ sub stmttrn{
 sub inv{
     my ($arg,$data)=@_;
     my %tran;
+    my $commodity;
     $data->{type}='inv';
     $data->{transactions}||=[];
+    $data->{check}||=[];
     
     @tran{qw(id payee)}=@{$arg->{invtran}}{qw(fitid memo)};
     $tran{date}=&getdate($arg->{invtran}->{dttrade});
-    $tran{commodity}=$data->{ticker}->{$arg->{secid}->{uniqueid}}||
-	$arg->{secid}->{uniqueid};
+    $commodity=$data->{ticker}->{$arg->{secid}->{uniqueid}};
     @tran{qw(quantity cost type)}=@{$arg}{qw(units total incometype)};
+
     $tran{cost}=-$tran{cost};
-    push @{$data->{transactions}},{%tran};
+    my $tran={%tran};
+    if ($commodity){
+	$tran->{commodity}=$commodity;
+    }else{
+	$tran->{commodity}=$arg->{secid}->{uniqueid};
+	push @{$data->{check}},$tran;
+    }
+
+    push @{$data->{transactions}},$tran;
 }
 
 
@@ -205,7 +218,9 @@ sub invpos{
     @balance{qw(date quantity)}=(&getdate($arg->{dtpriceasof}),
 				 $arg->{units});
     $balance{commodity}=$arg->{secid}->{uniqueid};
-    $data->{balance}={%balance};
+    my $balance={%balance};
+    push @{$data->{check}},$balance;
+    $data->{balance}=$balance;
  
 }
 
