@@ -23,10 +23,11 @@ sub parsefile{
 	my $row=$tcsv->getline($fd);
 	next unless $row;
 	@csv{@{$fields}}=@$row;
+	next unless $csv{date};
 	$csv{date}=str2time($csv{date});
-	next unless $csv{quantity};
+	next unless $csv{date};
 	$csv{quantity}=~s/^.*\$//;
-	next unless $csv{quantity}=~/^\d/;
+	#next unless $csv{quantity}=~/^\d/;
 	$csv{quantity}=-$csv{quantity} if $args->{reverse};
 	&{$callback}(\%csv);
 	#push @trlist,{%csv};

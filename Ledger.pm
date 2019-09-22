@@ -102,7 +102,7 @@ sub fromStmt{
     $account=~s!.*/!!;
     $account=~s/\..*//;
 
-    my $callback=sub{ $self->addStmtTran($account,$handlers,@_)};
+    my $callback=sub{ $self->StmtHandler($account,$handlers,@_)};
 
     unless ($self->{ofxfile}){
 	$self->{ofxfile}=($self->getTransactions('cleared'))[-1]->{file};
@@ -110,10 +110,12 @@ sub fromStmt{
     }
 
     if ($stmt=~/.[oq]fx$/i){
-	%trdat=&fromOFX2($stmt);
+	&Ledger::OFX::parsefile($stmt, $callback);
+	return $self;
+	#%trdat=&fromOFX2($stmt);
     }elsif ($stmt=~/.csv$/i){
 	&Ledger::CSV::parsefile($stmt, $csv->{$account}, $callback);
-	return;
+	return $self;
 	#%trdat=&fromCSV($stmt,$csv->{$account});
     }
 
@@ -183,6 +185,34 @@ sub fromStmt{
 
 
 }
+
+
+sub StmtHandler{
+    my $self=shift;
+    return ($_[2]->{cost} && $_[2]->{cost} eq 'BAL') ? $self->addStmtBal(@_):
+	$self->addStmtTran(@_);
+}
+	
+sub addStmtBal{
+    my $self=shift;
+    my $account=shift;
+    my $handlers=shift;
+    my $balance=shift;
+
+    my $payee=(split(/:/, $account))[-1];
+    $payee.=' Balance';
+	
+    my $transaction=new Ledger::Transaction
+	($balance->{date},"cleared",undef,$payee);
+
+    my $posting=$transaction->addPosting($account,$balance->{quantity},$balance->{commodity},'BAL');
+    $self->addBalance($account,$transaction);
+    $posting=undef unless ($balance->{commodity} && $balance->{commodity}=~/^\d+$/);
+    return ($transaction,$posting);
+    
+}
+
+
 sub addStmtTran{
     my $self=shift;
     my $account=shift;
@@ -197,6 +227,7 @@ sub addStmtTran{
 	$self->{desc}->{$payee}=$self->{id}->{$key};
 	return;
     }
+    $self->{id}->{$key}=$payee;
     return if ($stmttrn->{quantity} == 0);
     my $handler=$handlers->{$account}->{$payee}||
 	$handlers->{$account}->{$self->{desc}->{$payee}||""};
@@ -233,6 +264,7 @@ sub addStmtTran{
 			      $self->getTransactions('uncleared'));
 	$self->addTransaction($transaction);
     }
+
     $posting=undef unless ($stmttrn->{commodity} && $stmttrn->{commodity}=~/^\d+$/);
     return ($transaction,$posting);
 

@@ -23,9 +23,11 @@ my %HANDLER=(
 my $xml;
 my @xml;
 my $data;
+my $callback;
 
 sub parsefile{
     my $file=shift;
+    $callback=shift;
     local ($/);
     open (my $ofxh, '<', $file) || die "Can't open $file: $!"; 
     my $dat=&parse(<$ofxh>);
@@ -94,7 +96,7 @@ sub parsebody{
 sub init{
     $xml=undef;
     @xml=();
-    $data={};
+    $data={transactions=>[]};
 }
 
 sub start{
@@ -142,6 +144,7 @@ sub stop{
     foreach my $tran(@{$data->{check}}){
 	$tran->{commodity}=$data->{ticker}->{$tran->{commodity}};
     }
+    $callback=undef;
     return $data;
 }
 
@@ -172,7 +175,8 @@ sub stmttrn{
     }else{
 	$tran{payee}=$arg->{name};
     }
-    push @{$data->{transactions}},{%tran};
+    my ($transaction, $posting)=&{$callback}(\%tran);
+    push @{$data->{transactions}},$transaction;
 }
 
 sub inv{
@@ -189,15 +193,10 @@ sub inv{
     @tran{qw(quantity cost type)}=@{$arg}{qw(units total incometype)};
 
     $tran{cost}=-$tran{cost};
-    my $tran={%tran};
-    if ($commodity){
-	$tran->{commodity}=$commodity;
-    }else{
-	$tran->{commodity}=$arg->{secid}->{uniqueid};
-	push @{$data->{check}},$tran;
-    }
-
-    push @{$data->{transactions}},$tran;
+    $tran{commodity}=$commodity||$arg->{secid}->{uniqueid};;
+    my ($transaction, $posting)=&{$callback}(\%tran);
+    push @{$data->{check}},$posting if $posting;
+    push @{$data->{transactions}},$transaction;
 }
 
 
@@ -209,9 +208,11 @@ sub secinfo{
 
 sub ledgerbal{
     my ($arg, $data)=@_;
-    $data->{balance}={};
-    @{$data->{balance}}{qw(date quantity)}=(&getdate($arg->{dtasof}),
-						   $arg->{balamt});
+    my %balance;
+    @balance{qw(date quantity cost)}=(&getdate($arg->{dtasof}),
+				      $arg->{balamt}, 'BAL');
+    &{$callback}(\%balance) if @{$data->{transactions}};
+   
 }
 
 sub invpos{
@@ -219,12 +220,14 @@ sub invpos{
     return if $arg->{units}==0;
     my %balance;
     
-    @balance{qw(date quantity)}=(&getdate($arg->{dtpriceasof}),
-				 $arg->{units});
+    @balance{qw(date quantity cost)}=(&getdate($arg->{dtpriceasof}),
+				      $arg->{units}, 'BAL');
     $balance{commodity}=$arg->{secid}->{uniqueid};
-    my $balance={%balance};
-    push @{$data->{check}},$balance;
-    $data->{balance}=$balance;
+
+    if (@{$data->{transactions}}){
+	my ($transaction,$posting)=&{$callback}(\%balance);
+	push @{$data->{check}},$posting;
+    }
  
 }
 
