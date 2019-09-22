@@ -112,7 +112,7 @@ sub fromStmt{
 
     unless ($self->{ofxfile}){
 	$self->{ofxfile}=($self->getTransactions('cleared'))[-1]->{file};
-	#$self->getofxpos;
+	$self->getofxpos;
     }
     my $count=0;
     
@@ -143,10 +143,8 @@ sub fromStmt{
 	my $transaction=new Ledger::Transaction 
 	    ($stmttrn->{date}, "cleared", $stmttrn->{number}, 
 	     $payee);
-	$transaction->{file}=$self->{ofxfile};
 	$transaction->{edit}=$self->{ofxfile};
-	$transaction->{bpos}=-1;
-	$transaction->{epos}=-1;
+	$transaction->{edit_pos}=-1;
 	
 	$transaction->addPosting($account, $stmttrn->{quantity},
 				 $stmttrn->{commodity},
@@ -551,22 +549,14 @@ sub print{
 sub update{
     my $self=shift;
     store ($self->{desc}, $self->{payeetab}) if $self->{payeetab};
-    my @edit;
-    if ($self->{ofxfile}){
-	@edit=(grep { ( $_->{edit} || 
-			($_->{date}>0 && 
-			 $_->{state} ne 'cleared' && 
-			 $_->{file} eq $self->{ofxfile}))}
+    
+    my @edit=(grep { $_->{edit} }
 	       @{$self->{transactions}});
-	
-    }else{
-	@edit=(grep { $_->{edit} }
-	       @{$self->{transactions}});
-    }
 
     my $file='';
     my $fd;
-    foreach my $transaction (sort {$a->{file} cmp $b->{file}} @edit){
+    foreach my $transaction (sort {$a->{file} cmp $b->{file}} 
+			     grep {$_->{file}} @edit){
 	next if $transaction->{bpos};
 	
 	unless ($transaction->{file} eq $file){
@@ -580,7 +570,9 @@ sub update{
     close($fd) if $fd;
     
 			  
-    my %files=map {($_->{file}=>1, $_->{edit}=>1)} @edit;
+    my %files=map {($_->{file}?
+		    ($_->{file}=>1, $_->{edit}=>1):
+		    ($_->{edit}=>1))} @edit;
 
     foreach $file (keys %files){
 	$self->update_file($file);
@@ -592,48 +584,76 @@ sub update_file{
     my $file=shift;
     my $ofx=($self->{ofxfile} && $self->{ofxfile} eq $file);
     
-    my @file_trans;
-    if ($ofx){
-	@file_trans= (grep {($_->{file} eq $file) &&
-				($_->{edit} ||
-				 ($_->{date} >0 && 
-				  $_->{state} ne 'cleared'))}
-		      @{$self->{transactions}});
-    }else{
-	@file_trans= (grep {($_->{file} eq $file && $_->{edit})}
-		      @{$self->{transactions}});
-    }
-    my @edit_trans;
- 
-    if($ofx){ 
-	@edit_trans= (grep {($_->{edit} && $_->{edit} eq $file)}
-		      @{$self->{transactions}});
-    }else{
-	@edit_trans= (grep {($_->{edit} && $_->{file} ne $file 
-			     && $_->{edit} eq $file)}
-		      @{$self->{transactions}});
-    }
+    my @edit= (grep {$_->{edit} &&
+			 (($_->{file} && 
+			   $_->{file} eq $file) ||
+			  $_->{edit} eq $file)}
+	       @{$self->{transactions}});
+    my @append=grep {$_->{edit} eq $file && $_->{edit_pos}<0} @edit;
+
+    my $posfilter=sub {
+    	my $t=shift;
+    	my %pos=();
+	unless ($t->{edit}){
+	    print STDERR "edit=".$t->toString."\n";
+	}
+    	if ($t->{edit} eq $file && $t->{edit_pos}>=0){
+    	    $pos{$t->{edit_pos}}=$t;
+    	}
+    	if ($t->{file} && $t->{file} eq $file){
+    	    $pos{$t->{bpos}}=$t;
+    	}
+    	%pos;
+    };
     
+    my %posmap = map { &{$posfilter}($_) }  (@edit);
+
+    if ($ofx && @append){
+	$posmap{$self->{ofxpos}}=-1;
+    }
     my $lastpos=0;
     print STDERR "file=$file\n";
     rename($file,"$file.bak");
     open (my $writeh, ">", $file);
     open (my $readh, "<", "$file.bak");
 
-    foreach my $transaction (sort {$a->{bpos} <=> $b->{bpos}} @file_trans){
-	unless ($transaction->{bpos}){
-	    print STDERR $transaction->toString.'\n';
-	}
-	if ($transaction->{bpos}>0){
-	    my $len=$transaction->{bpos}-$lastpos-1;
-	    seek ($readh, $lastpos, SEEK_SET);     # read from last read
-	    read $readh, (my $buffer), $len;       #  to beginning of transaction 
-	    print $writeh $buffer;                 # copy to new file
-	    $lastpos=$transaction->{epos};         # 
-	    if (!$ofx && $transaction -> {edit} eq $file){
-		print $writeh $transaction->toString();
+    foreach my $pos (sort {$a <=> $b} (keys %posmap)){
+	my $transaction=$posmap{$pos};
+	
+	# unless ($transaction->{bpos}>0){
+	#     print STDERR $transaction->toString.'\n';
+	# }
+	
+	my $len=$pos-$lastpos-1;
+	seek ($readh, $lastpos, SEEK_SET);   # read from last read
+	read $readh, (my $buffer), $len;     #  to beginning of transaction 
+	print $writeh $buffer;               # copy to new file
+
+	
+	if (ref($transaction)){
+	    $lastpos=(($pos == $transaction->{bpos})?
+		      $transaction->{epos}:
+		      $transaction->{edit_end});
+	    if (($transaction -> {edit} eq $file) && 
+		($transaction->{edit_pos} == $pos)) {
+		print $writeh "\n".$transaction->toString();
 	    }
+	}elsif($ofx){
+	    my @cleared=grep {$_->{state} eq 'cleared' } @append;
+	    my @uncleared=grep {$_->{state} ne 'cleared' } @append;
+	    print $writeh "\n; ".localtime."\n\n";
+
+	    print $writeh join("\n",(map {$_->toString} 
+				 (sort {$a->{date} <=> $b->{date}} @cleared),
+				     (sort {$a->{date} <=> $b->{date}} 
+				      (values %{$self->{balance}})),
+				     (sort {$a->{date} <=> $b->{date}} 
+				      @uncleared)))."\n\n";
+	    @append=();
+	    $lastpos=$pos;
 	}
+	
+	    
     }
     # copy to end of file.
     seek ($readh, $lastpos, SEEK_SET);
@@ -646,23 +666,16 @@ sub update_file{
     } 
     close($readh);
 
+    unless (@append){
+	close ($writeh);
+	return;
+    }
     print $writeh '; '.localtime."\n\n";
 
-    if ($ofx){
-	my @cleared=grep {$_->{state} eq 'cleared' } @edit_trans;
-	my @uncleared=grep {$_->{state} ne 'cleared' } @edit_trans;
-	   
-	print $writeh join("\n",(map {$_->toString} 
-				 (sort {$a->{date} <=> $b->{date}} @cleared),
-				 (sort {$a->{date} <=> $b->{date}} 
-				  (values %{$self->{balance}})),
-				 (sort {$a->{date} <=> $b->{date}} 
-				  @uncleared)))."\n\n";
-    }else{
-	print $writeh join("\n",(map {$_->toString} 
-				 (sort {$a->{date} <=> $b->{date}} 
-				  @edit_trans)))."\n\n";
-    }
+    print $writeh join("\n",(map {$_->toString} 
+			     (sort {$a->{date} <=> $b->{date}} 
+			      @append)))."\n\n";
+
     close($writeh);
 
 }
