@@ -104,16 +104,19 @@ sub fromStmt{
 
     my $callback=sub{ $self->addStmtTran($account,$handlers,@_)};
 
-    if ($stmt=~/.[oq]fx$/i){
-	%trdat=&fromOFX2($stmt);
-    }elsif ($stmt=~/.csv$/i){
-	%trdat=&fromCSV($stmt,$csv->{$account});
-    }
-
     unless ($self->{ofxfile}){
 	$self->{ofxfile}=($self->getTransactions('cleared'))[-1]->{file};
 	$self->getofxpos;
     }
+
+    if ($stmt=~/.[oq]fx$/i){
+	%trdat=&fromOFX2($stmt);
+    }elsif ($stmt=~/.csv$/i){
+	&Ledger::CSV::parsefile($stmt, $csv->{$account}, $callback);
+	return;
+	#%trdat=&fromCSV($stmt,$csv->{$account});
+    }
+
     my $count=0;
     
     foreach my $stmttrn (@{$trdat{transactions}}){
@@ -230,7 +233,7 @@ sub addStmtTran{
 			      $self->getTransactions('uncleared'));
 	$self->addTransaction($transaction);
     }
-    $posting=undef unless ($stmttrn->{commodity}=~/^\d+$/);
+    $posting=undef unless ($stmttrn->{commodity} && $stmttrn->{commodity}=~/^\d+$/);
     return ($transaction,$posting);
 
 }

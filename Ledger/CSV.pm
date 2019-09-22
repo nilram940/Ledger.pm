@@ -5,7 +5,7 @@ use Date::Parse;
 use Text::CSV;
 
 sub parsefile{
-    my ($file,$args)=@_;
+    my ($file,$args,$callback)=@_;
     my $fields=$args->{fields};
     my $csvargs=$args->{csv_args}||{};
     my $tcsv=Text::CSV->new($csvargs);
@@ -18,18 +18,23 @@ sub parsefile{
     }else{
 	open($fd, "<", $file) || die "Can't open $file: $!";
     }
-    while(my $row=$tcsv->getline($fd)){
+    while(1){
+	last if $tcsv->eof;
+	my $row=$tcsv->getline($fd);
+	next unless $row;
 	@csv{@{$fields}}=@$row;
 	$csv{date}=str2time($csv{date});
 	next unless $csv{quantity};
 	$csv{quantity}=~s/^.*\$//;
+	next unless $csv{quantity}=~/^\d/;
 	$csv{quantity}=-$csv{quantity} if $args->{reverse};
-	push @trlist,{%csv};
+	&{$callback}(\%csv);
+	#push @trlist,{%csv};
     }
 
     $tcsv->eof or $tcsv->error_diag();
     close($fd) unless $fd eq $file;
-    return (transactions=>\@trlist);
+    return 1; #(transactions=>\@trlist);
 }
 
 sub ledgerCSV{
