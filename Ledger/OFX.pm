@@ -96,7 +96,7 @@ sub parsebody{
 sub init{
     $xml=undef;
     @xml=();
-    $data={transactions=>[]};
+    $data={};
 }
 
 sub start{
@@ -161,7 +161,6 @@ sub dump{
 sub stmttrn{
     my ($arg,$data)=@_;
     return if $data->{type};# eq 'inv';
-    $data->{transactions}||=[];
     my %tran;
     @tran{qw(type quantity id number)}=
 	@{$arg}{qw(trntype trnamt fitid checknum)};
@@ -176,7 +175,7 @@ sub stmttrn{
 	$tran{payee}=$arg->{name};
     }
     my ($transaction, $posting)=&{$callback}(\%tran);
-    push @{$data->{transactions}},$transaction;
+    $data->{transactions}||=$transaction;
 }
 
 sub inv{
@@ -184,7 +183,6 @@ sub inv{
     my %tran;
     my $commodity;
     $data->{type}='inv';
-    $data->{transactions}||=[];
     $data->{check}||=[];
     
     @tran{qw(id payee)}=@{$arg->{invtran}}{qw(fitid memo)};
@@ -196,7 +194,7 @@ sub inv{
     $tran{commodity}=$commodity||$arg->{secid}->{uniqueid};;
     my ($transaction, $posting)=&{$callback}(\%tran);
     push @{$data->{check}},$posting if $posting;
-    push @{$data->{transactions}},$transaction;
+    $data->{transactions}||=$transaction;
 }
 
 
@@ -211,7 +209,7 @@ sub ledgerbal{
     my %balance;
     @balance{qw(date quantity cost)}=(&getdate($arg->{dtasof}),
 				      $arg->{balamt}, 'BAL');
-    &{$callback}(\%balance) if @{$data->{transactions}};
+    &{$callback}(\%balance) if $data->{transactions};
    
 }
 
@@ -224,7 +222,7 @@ sub invpos{
 				      $arg->{units}, 'BAL');
     $balance{commodity}=$arg->{secid}->{uniqueid};
 
-    if (@{$data->{transactions}}){
+    if ($data->{transactions}){
 	my ($transaction,$posting)=&{$callback}(\%balance);
 	push @{$data->{check}},$posting;
     }

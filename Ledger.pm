@@ -96,7 +96,14 @@ sub fromStmt{
     $account=~s!.*/!!;
     $account=~s/\..*//;
 
-    my $callback=sub{ $self->StmtHandler($account,$handlers,@_)};
+    my $callback=sub{
+	my $stmtrns=shift;
+	if ($stmtrns->{cost} && $stmtrns->{cost} eq 'BAL'){
+	    $self->addStmtBal($account,$stmtrns);
+	}else{
+	    $self->addStmtTran($account,$handlers,$stmtrns);
+	}
+    };
 
     unless ($self->{ofxfile}){
 	$self->{ofxfile}=($self->getTransactions('cleared'))[-1]->{file};
@@ -123,7 +130,6 @@ sub StmtHandler{
 sub addStmtBal{
     my $self=shift;
     my $account=shift;
-    my $handlers=shift;
     my $balance=shift;
 
     my $payee=(split(/:/, $account))[-1];
@@ -220,7 +226,7 @@ sub getTransactions{
     my $filter=shift||'';
     
     if (ref($filter)){
-	return grep {&{$filter}($_)} @{$self->{transactions}};
+	return grep &{$filter}($_), @{$self->{transactions}};
     }
     if ($filter eq 'cleared'){
 	return grep {$_->{state} eq 'cleared'} @{$self->{transactions}};
@@ -414,7 +420,7 @@ sub update_file{
     	%pos;
     };
     
-    my %posmap = map { &{$posfilter}($_) }  (@edit);
+    my %posmap = map &{$posfilter}($_),  (@edit);
 
     if ($ofx && @append){
 	$posmap{$self->{ofxpos}}=-1;
