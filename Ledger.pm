@@ -80,21 +80,15 @@ sub fromXML{
     return $self
 }
 
-sub fromCSV{
-    my ($file, $csv)=@_;
-    return Ledger::CSV::parsefile($file, $csv);
-}
-	
 sub fromStmt{
     # read Stmt and convert to Ledger data structure.
     # expects files to be named $account-$data.$type
-    # Supports OFX
+    # Supports OFX and CSV;
     
     my $self=shift;
     my $stmt=shift;
     my $handlers=shift;
     my $csv=shift;
-    my %trdat;
 
 
     my $account=$stmt;
@@ -111,78 +105,11 @@ sub fromStmt{
 
     if ($stmt=~/.[oq]fx$/i){
 	&Ledger::OFX::parsefile($stmt, $callback);
-	return $self;
-	#%trdat=&fromOFX2($stmt);
     }elsif ($stmt=~/.csv$/i){
 	&Ledger::CSV::parsefile($stmt, $csv->{$account}, $callback);
-	return $self;
-	#%trdat=&fromCSV($stmt,$csv->{$account});
     }
 
-    my $count=0;
-    
-    foreach my $stmttrn (@{$trdat{transactions}}){
-	my $key=&makeid($account,$stmttrn);
-	my $payee=$stmttrn->{payee};
-	if ($self->{id}->{$key}){
-	    $self->{desc}->{$payee}=$self->{id}->{$key};
-	    next;
-	}
-	$self->{id}->{$key}=$payee;
-	next if ($stmttrn->{quantity} == 0);
-	my $handler=$handlers->{$account}->{$payee}||
-	    $handlers->{$account}->{$self->{desc}->{$payee}||""};
-
-	unless ($handler){
-	    my $key=(split(/\s+/,$payee))[0];
-	    $handler=$handlers->{$account}->{$key}||'';
-	}
-	
-	if ($handler && ref ($handler) eq 'HASH'){
-	    $payee=$handler->{payee}; 
-	}
-	elsif ($self->{desc}->{$payee}){
-	    $payee=$self->{desc}->{$payee};
-	}
-	
-	my $transaction=new Ledger::Transaction 
-	    ($stmttrn->{date}, "cleared", $stmttrn->{number}, 
-	     $payee);
-	$transaction->{edit}=$self->{ofxfile};
-	$transaction->{edit_pos}=-1;
-	
-	$transaction->addPosting($account, $stmttrn->{quantity},
-				 $stmttrn->{commodity},
-				 $stmttrn->{cost},"ID: $key");
-	if ($handler){
-	    if (ref ($handler) eq 'HASH'){
-		$transaction=$self->transfer($transaction,$handler->{transfer})
-	    }else{
-		$transaction=&{$handler}($transaction);
-	    }
-	}
-	if ($transaction){
-	    $transaction->balance($self->{table},
-				  $self->getTransactions('uncleared'));
-	    $self->addTransaction($transaction);
-	    $count++;
-	}
-
-
-    }
-    if($count){
-	my $payee=(split(/:/, $account))[-1];
-	$payee.=' Balance';
-	my $balance=$trdat{balance};
-    
-	my $transaction=new Ledger::Transaction
-	    ($balance->{date},"cleared",undef,$payee);
-
-	$transaction->addPosting($account,$balance->{quantity},$balance->{commodity},'BAL');
-	$self->addBalance($account,$transaction);
-    }
     return $self;
-
 
 }
 
@@ -268,123 +195,6 @@ sub addStmtTran{
     $posting=undef unless ($stmttrn->{commodity} && $stmttrn->{commodity}=~/^\d+$/);
     return ($transaction,$posting);
 
-}
-
-
-sub fromOFX2{
-    my $ofxfile=shift;
-    my $ofxdat=Ledger::OFX::parsefile($ofxfile);
-    my %trlist=();
-    $trlist{transactions}=$ofxdat->{transactions};
-    $trlist{balance}=$ofxdat->{balance};
-    return %trlist;
-
-    
-    foreach my $stmttrn (@{$ofxdat->{transactions}}){
-	my $trans={};
-
-	if ($stmttrn->{commodity}){
-	    $trans->{commodity}=$ofxdat->{ticker}->{$stmttrn->{commodity}};
-	}
-
-	my @copy=qw(payee quantity cost id date number);
-	@{$trans}{@copy}= @{$stmttrn}{@copy};
-	push @{$trlist{transactions}}, $trans;
-    }
-    my $balance={};
-    my $ofxbal=$ofxdat->{balance};
-    
-    if ($ofxbal->{commodity}){
-	$balance->{commodity}=$ofxdat->{ticker}->{$ofxbal->{commodity}};
-    }
-    $balance->{date}=$ofxbal->{date};
-    $balance->{quantity}=$ofxbal->{quantity};
-    $trlist{balance}=$balance;
-    
-    return %trlist
-}
-
-sub fromOFX{
-    my $self=shift;
-    my $ofx=shift;
-    my $handlers=shift;
-    my $ofxdat=Ledger::OFX::parse($ofx);
-    my ($account,$code)=&getaccount($ofxdat->{acctid},$self->{accounts});
-    
-    my $count=0;
-    unless ($self->{ofxfile}){
-	$self->{ofxfile}=($self->getTransactions('cleared'))[-1]->{file};
-	$self->getofxpos;
-    }
-    foreach my $stmttrn (@{$ofxdat->{transactions}}){
-	my $key;
-	my $payee=$stmttrn->{payee};
-	if ($stmttrn->{id}){
-	    $key=$code.'-'.$stmttrn->{id};
-	    if ($self->{id}->{$key}){
-		$self->{desc}->{$payee}=$self->{id}->{$key};
-		next;
-	    }
-	}
-	my $handler=$handlers->{$account}->{$payee}||
-	    $handlers->{$account}->{$self->{desc}->{$payee}||""};
-
-	if ($handler && ref ($handler) eq 'HASH'){
-	    $payee=$handler->{payee}; 
-	}
-	elsif ($self->{desc}->{$payee}){
-	    $payee=$self->{desc}->{$payee};
-	}
-	
-	my $transaction=new Ledger::Transaction 
-	    ($stmttrn->{date}, "cleared", $stmttrn->{number}, 
-	     $payee);
-	#$transaction->{file}=$self->{ofxfile};
-	$transaction->{edit}=$self->{ofxfile};
-	$transaction->{edit_pos}=-1;
-	#$transaction->{bpos}=-1;
-	#$transaction->{epos}=-1;
-			
-	my $commodity;
-	if ($stmttrn->{commodity}){
-	    $commodity=$ofxdat->{ticker}->{$stmttrn->{commodity}};
-	}
-	$transaction->addPosting($account, $stmttrn->{quantity},$commodity,
-				 $stmttrn->{cost},"ID: $key");
-	if ($handler){
-	    if (ref ($handler) eq 'HASH'){
-		$transaction=$self->transfer($transaction,$handler->{transfer})
-	    }else{
-		$transaction=&{$handler}($transaction);
-	    }
-	}
-	if ($transaction){
-	    $transaction->balance($self->{table},
-				  $self->getTransactions('uncleared'));
-	    push @{$self->{transactions}}, $transaction;
-	    $count++;
-	}
-
-
-    }
-    if($count){
-	my $payee=(split(/:/, $account))[-1];
-	$payee.=' Balance';
-	my $balance=$ofxdat->{balance};
-    
-	my $transaction=new Ledger::Transaction
-	    ($balance->{date},"cleared",undef,$payee);
-	
-	my $commodity;
-	if ($balance->{commodity}){
-	    $commodity=$ofxdat->{ticker}->{$balance->{commodity}};
-	}
-
-	$transaction->addPosting($account,$balance->{quantity},$commodity,'BAL');
-	push @{$self->{balance}},$transaction;
-    }
-    return $self;
-    
 }
 
 sub getofxpos{
@@ -485,12 +295,6 @@ sub getaccount{
     return ($account,$code);
 }
 
-
-sub getCleared{
-    my $self=shift;
-    my $uncleared=@_ && not shift;
-    grep {$uncleared xor $_->{state} eq "cleared"} $self->getTransactions();
-}
     
 sub gentable {
     my $self=shift;
@@ -549,37 +353,6 @@ sub toString2{
     return $str;
 }
 
-sub print{
-    my $self=shift;
-    my $file='';
-    my $fh;
-	
-    foreach my $transaction (@{$self->{transactions}}){
-	
-	if ($transaction->{file} ne $file){
-	    $file=$transaction->{file};
-	    close($fh) if $fh;
-	    open ($fh, "<", $file);
-	}
-	unless ($transaction->{bpos}){
-	    my $len=200;
-	    my $pos=$transaction->getPosting(0)->{bpos}-$len;
-	    if ($pos<0){
-		$len+=$pos;
-		$pos=0;
-	    }
-	    seek ($fh, $pos, SEEK_SET);
-	    read $fh, (my $str), $len-1; 
-	    my $idx=rindex $str,"\n";
-	    $idx=0 if $idx<0;
-	    $transaction->{bpos}=$pos+$idx;
-	}
-	seek ($fh, $transaction->{bpos}, SEEK_SET);
-	read $fh, (my $trstr), ($transaction->{epos}-$transaction->{bpos});
-	print $trstr;#."\n";
-    }
-    
-}
     
 sub update{
     my $self=shift;
