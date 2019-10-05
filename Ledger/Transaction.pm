@@ -162,10 +162,9 @@ sub checkpending{
     
 
     $candidate=$candidate->[-1];
-    $candidate->{state}='cleared';
 
     if ($self->{transfer}){
-	my $posting=$candidate->getPosting(not $match);
+	my $posting=$candidate->getPosting(1 - $match);
 	if ($posting->{account} !~/^Equity/ &&
 	    $posting->{account} ne $self->getPosting(1)->{account}){ 
 	    if ($candidate->{file} && ! $candidate->{bpos}){
@@ -179,7 +178,7 @@ sub checkpending{
 	    return 1;
 	}
     }
-
+    $candidate->{state}='cleared';
     $candidate->{'aux-date'}=$candidate->{date} 
            unless $candidate->{date} == $self->{date};
     $candidate->{date}=$self->{date};
