@@ -290,9 +290,6 @@ sub makeid{
     
     if ($trdat->{id}){
 	$id.=$trdat->{id};
-	# if ($account =~ /Discover/){
-	#     substr($id,-5,5,'0');
-	# }
     }else{
 	$id.=strftime('%Y/%m/%d', localtime $trdat->{date}).
 	    '+$'.sprintf('%.02f',$trdat->{quantity});
