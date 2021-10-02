@@ -13,6 +13,7 @@ my %XML=(lt => '<',
 my %HANDLER=(
     'acctid' => \&acctid,
     'stmttrn' => \&stmttrn,
+    'income' => \&inv,
     'invbuy' => \&inv,
     'reinvest' => \&inv,
     'secinfo' => \&secinfo,
@@ -30,9 +31,13 @@ sub parsefile{
     $callback=shift;
     local ($/);
     open (my $ofxh, '<', $file) || die "Can't open $file: $!"; 
-    my $dat=&parse(<$ofxh>);
+    my $body=(<$ofxh>);
     close($ofxh);
-    return $dat;
+    if ($body !~/OFXHEADER/){
+	print STDERR "$file is not an OFX file\n";
+	return "";
+    }
+    return &parse($body);
 }
 
 sub parse{
@@ -169,7 +174,8 @@ sub stmttrn{
     }
 
     $tran{date}=&getdate($arg->{dtposted});
-    if ($arg->{memo} && $arg->{memo} !~/^\d+$/){
+    if ($arg->{memo} && $arg->{memo} !~/^\d+$/ &&
+	$arg->{memo} !~/^\w+$/){
 	$tran{payee}=$arg->{memo};
     }else{
 	$tran{payee}=$arg->{name};

@@ -29,6 +29,8 @@ sub parsefile{
 	$csv{quantity}=~s/^.*\$//;
 	#next unless $csv{quantity}=~/^\d/;
 	$csv{quantity}=-$csv{quantity} if $args->{reverse};
+	$csv{payee}=~s/^\s*//;
+	$csv{payee}=~s/~.*$//;
 	&{$callback}(\%csv);
 	#push @trlist,{%csv};
     }
@@ -99,7 +101,7 @@ sub ledgerCSV{
 	}
 	$id=$csv{id};
     }
-    $tcsv->eof or $tcsv->error_diag();
+    $tcsv->eof or die $tcsv->error_diag();
     close($fd);
     return $ledger;
 }

@@ -53,6 +53,9 @@ sub findtext{
     
     # read characters between bpos and epos as transaction text;
     seek ($fh, $self->{bpos}, SEEK_SET);
+    if ($self->{bpos}>$self->{epos}){
+	die "Negative length $self->{payee}";
+    }
     read $fh, (my $trstr), ($self->{epos}-$self->{bpos});
     $self->{text}=$trstr;
     close($fh) if $close;
@@ -164,7 +167,7 @@ sub checkpending{
     $candidate=$candidate->[-1];
 
     if ($self->{transfer}){
-	my $posting=$candidate->getPosting(1 - $match);
+	my $posting=$candidate->getPosting(1 - $match); #Assumes only 2 postings
 	if ($posting->{account} !~/^Equity/ &&
 	    $posting->{account} ne $self->getPosting(1)->{account}){ 
 	    if ($candidate->{file} && ! $candidate->{bpos}){

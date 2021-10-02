@@ -82,7 +82,7 @@ sub fromXML{
 
 sub fromStmt{
     # read Stmt and convert to Ledger data structure.
-    # expects files to be named $account-$data.$type
+    # expects files to be named $account-$date.$type
     # Supports OFX and CSV;
     
     my $self=shift;
@@ -138,7 +138,7 @@ sub addStmtBal{
     my $transaction=new Ledger::Transaction
 	($balance->{date},"cleared",undef,$payee);
 
-    my $posting=$transaction->addPosting($account,$balance->{quantity},$balance->{commodity},'BAL');
+    my $posting=$transaction->addPosting($account,$balance->{quantity}+0,$balance->{commodity},'BAL');
     $self->addBalance($account,$transaction);
     $posting=undef unless ($balance->{commodity} && $balance->{commodity}=~/^\d+$/);
     return ($transaction,$posting);
@@ -160,6 +160,15 @@ sub addStmtTran{
 	$self->{desc}->{$payee}=$self->{id}->{$key};
 	return;
     }
+    if ($account=~/Discover/){
+	my $dkey=$key;
+	substr($dkey,-5,5,'0');
+	if ($self->{id}->{$dkey}){
+		$self->{desc}->{$payee}=$self->{id}->{$key};
+		return;
+	}
+    }
+    
     $self->{id}->{$key}=$payee;
     return if ($stmttrn->{quantity} == 0);
     my $handler=$handlers->{$account}->{$payee}||
@@ -182,9 +191,9 @@ sub addStmtTran{
     $transaction->{edit}=$self->{ofxfile};
     $transaction->{edit_pos}=-1;
     
-    my $posting=$transaction->addPosting($account, $stmttrn->{quantity},
+    my $posting=$transaction->addPosting($account, $stmttrn->{quantity}+0,
 					 $stmttrn->{commodity},
-					 $stmttrn->{cost},"ID: $key");
+					 $stmttrn->{cost}+0,"ID: $key");
     if ($handler){
 	if (ref ($handler) eq 'HASH'){
 	    $transaction=$self->transfer($transaction,$handler->{transfer})
@@ -281,9 +290,9 @@ sub makeid{
     
     if ($trdat->{id}){
 	$id.=$trdat->{id};
-	if ($account =~ /Discover/){
-	    substr($id,-5,5,'0');
-	}
+	# if ($account =~ /Discover/){
+	#     substr($id,-5,5,'0');
+	# }
     }else{
 	$id.=strftime('%Y/%m/%d', localtime $trdat->{date}).
 	    '+$'.sprintf('%.02f',$trdat->{quantity});
