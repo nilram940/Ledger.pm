@@ -44,7 +44,9 @@ sub toString{
 	if ($self->{commodity} eq '$'){
 	    $str.=sprintf('$%0.2f',$self->{quantity});
 	}else{
-	    $str.=$self->{quantity}.' '.$self->{commodity};
+	    my $commodity=$self->{commodity};
+	    $commodity = '"'.$commodity.'"' if $commodity =~/[^A-Z]/i;
+	    $str.=$self->{quantity}.' '.$commodity;
 	    if ($self->{cost} && ! $bal){
 		$str.=' @@ $'.sprintf('%0.2f',$self->{cost});
 	    }

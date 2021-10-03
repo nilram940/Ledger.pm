@@ -11,6 +11,8 @@ my %XML=(lt => '<',
       apos => "'");
 
 my %HANDLER=(
+    'invbal' => \&invbal,
+#    'invbal' => \&dump,
     'acctid' => \&acctid,
     'stmttrn' => \&stmttrn,
     'income' => \&inv,
@@ -150,6 +152,7 @@ sub stop{
 	$tran->{commodity}=$data->{ticker}->{$tran->{commodity}};
     }
     $callback=undef;
+    #print Dumper($data->{prices}); 
     return $data;
 }
 
@@ -165,7 +168,7 @@ sub dump{
 
 sub stmttrn{
     my ($arg,$data)=@_;
-    return if $data->{type};# eq 'inv';
+    #return if $data->{type};# eq 'inv';
     my %tran;
     @tran{qw(type quantity id number)}=
 	@{$arg}{qw(trntype trnamt fitid checknum)};
@@ -194,27 +197,56 @@ sub inv{
     @tran{qw(id payee)}=@{$arg->{invtran}}{qw(fitid memo)};
     $tran{date}=&getdate($arg->{invtran}->{dttrade});
     $commodity=$data->{ticker}->{$arg->{secid}->{uniqueid}};
-    @tran{qw(quantity cost type)}=@{$arg}{qw(units total incometype)};
-
-    $tran{cost}=-$tran{cost};
-    $tran{commodity}=$commodity||$arg->{secid}->{uniqueid};;
+    if ($arg->{subacctsec} eq 'CASH'){
+	@tran{qw(quantity type)}=@{$arg}{qw(total incometype)};
+	$commodity="USD";
+    }else{
+	@tran{qw(quantity cost type)}=@{$arg}{qw(units total incometype)};
+	$tran{cost}=-$tran{cost};
+	$tran{commodity}=$commodity||$arg->{secid}->{uniqueid};
+    }
     my ($transaction, $posting)=&{$callback}(\%tran);
-    push @{$data->{check}},$posting if $posting;
+    push @{$data->{check}},$posting if $posting && !$commodity;
     $data->{transactions}||=$transaction;
 }
 
 
 sub secinfo{
     my ($arg,$data)=@_;
+    my $ticker=$arg->{ticker};
     $data->{ticker}||={};
-    $data->{ticker}->{$arg->{secid}->{uniqueid}}=$arg->{ticker};
-}
+    if ($ticker){
+	$data->{ticker}->{$arg->{secid}->{uniqueid}}=$ticker;
+    }else{
+	$ticker=$arg->{secid}->{uniqueid};
+    }
+
+    $data->{prices}||={};
+    $data->{prices}->{$ticker}={
+	date  => &getdate($arg->{dtasof}),
+	price => $arg->{unitprice}
+    }
+}	    
+    
+
+
 
 sub ledgerbal{
     my ($arg, $data)=@_;
     my %balance;
     @balance{qw(date quantity cost)}=(&getdate($arg->{dtasof}),
 				      $arg->{balamt}, 'BAL');
+    &{$callback}(\%balance) if $data->{transactions};
+   
+}
+
+sub invbal{
+    my ($arg, $data)=@_;
+    my %balance;
+    $balance{quantity}=$arg->{availcash};
+    return if $balance{quantity}==0;
+    $balance{date}=&getdate($arg->{ballist}->[0]->{bal}->{dtasof});
+    $balance{cost}='BAL';
     &{$callback}(\%balance) if $data->{transactions};
    
 }

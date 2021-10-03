@@ -140,7 +140,7 @@ sub addStmtBal{
 
     my $posting=$transaction->addPosting($account,$balance->{quantity}+0,$balance->{commodity},'BAL');
     $self->addBalance($account,$transaction);
-    $posting=undef unless ($balance->{commodity} && $balance->{commodity}=~/^\d+$/);
+    $posting=undef unless ($balance->{commodity} && $balance->{commodity}=~/^\d+/);
     return ($transaction,$posting);
     
 }
@@ -207,7 +207,7 @@ sub addStmtTran{
 	$self->addTransaction($transaction);
     }
 
-    $posting=undef unless ($stmttrn->{commodity} && $stmttrn->{commodity}=~/^\d+$/);
+    $posting=undef unless ($stmttrn->{commodity} && $stmttrn->{commodity}=~/^\d+/);
     return ($transaction,$posting);
 
 }
