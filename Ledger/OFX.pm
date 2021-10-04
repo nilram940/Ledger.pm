@@ -17,6 +17,7 @@ my %HANDLER=(
     'stmttrn' => \&stmttrn,
     'income' => \&inv,
     'invbuy' => \&inv,
+    'invsell' => \&inv,
     'reinvest' => \&inv,
     'secinfo' => \&secinfo,
     'ledgerbal' => \&ledgerbal,
@@ -198,7 +199,8 @@ sub inv{
     $tran{date}=&getdate($arg->{invtran}->{dttrade});
     $commodity=$data->{ticker}->{$arg->{secid}->{uniqueid}};
     if ($arg->{subacctsec} eq 'CASH'){
-	@tran{qw(quantity type)}=@{$arg}{qw(total incometype)};
+	$tran{quantity}=$arg->{units}||$arg->{total};
+	$tran{type}=$arg->{incometype};
 	$commodity="USD";
     }else{
 	@tran{qw(quantity cost type)}=@{$arg}{qw(units total incometype)};
