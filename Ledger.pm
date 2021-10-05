@@ -65,10 +65,19 @@ sub addBalance{
     }else{
 	$transaction=new Ledger::Transaction(@_);
     }
-    unless ($self->{balance}->{$account} &&
-	$transaction->{date}< $self->{balance}->{$account}->{date}){
-	$self->{balance}->{$account}=$transaction;
+    # unless ($self->{balance}->{$account} &&
+    # 	$transaction->{date}< $self->{balance}->{$account}->{date}){
+    # 	$self->{balance}->{$account}=$transaction;
 
+    # }
+    if ($self->{balance}->{$account}){
+	if ($transaction->{date}>$self->{balance}->{$account}->[0]->{date}){
+	    $self->{balance}->{$account}=[$transaction];
+	}elsif($transaction->{date}==$self->{balance}->{$account}->[0]->{date}){
+	    push @{$self->{balance}->{$account}},$transaction;
+	}
+    }else{
+	$self->{balance}->{$account}=[$transaction];
     }
     return $self->{balance}->{$account};
 }
@@ -244,7 +253,7 @@ sub getTransactions{
 	return grep {$_->{state} ne 'cleared'} @{$self->{transactions}};
     }
     if ($filter eq 'balance'){
-	return (values %{$self->{balance}});
+	return (map {@$_} (values %{$self->{balance}}));
     }
     if ($filter eq 'edit'){
 	return grep {$_->{edit} } @{$self->{transactions}};
@@ -336,7 +345,7 @@ sub gentable {
 
 sub toString{
     my $self=shift;
-    my $str=join("\n\n",map {$_->toString} (sort {$a->{date} <=> $b->{date}} @{$self->{transactions}}),(sort {$a->{date} <=> $b->{date}} (values %{$self->{balance}})));
+    my $str=join("\n\n",map {$_->toString} (sort {$a->{date} <=> $b->{date}} @{$self->{transactions}}),(sort {$a->{date} <=> $b->{date}} map {@$_} (values %{$self->{balance}})));
     $str.="\n\n";
     return $str;
 }
@@ -466,7 +475,7 @@ sub update_file{
 	    print $writeh join("\n",(map {$_->toString} 
 				 (sort {$a->{date} <=> $b->{date}} @cleared),
 				     (sort {$a->{date} <=> $b->{date}} 
-				      (values %{$self->{balance}})),
+				      map {@$_} (values %{$self->{balance}})),
 				     (sort {$a->{date} <=> $b->{date}} 
 				      @uncleared)))."\n\n";
 	    @append=();

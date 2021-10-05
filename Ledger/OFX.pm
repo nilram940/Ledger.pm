@@ -246,7 +246,7 @@ sub invbal{
     my ($arg, $data)=@_;
     my %balance;
     $balance{quantity}=$arg->{availcash};
-    return if $balance{quantity}==0;
+    #return if $balance{quantity}==0;
     $balance{date}=&getdate($arg->{ballist}->[0]->{bal}->{dtasof});
     $balance{cost}='BAL';
     &{$callback}(\%balance) if $data->{transactions};

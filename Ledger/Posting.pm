@@ -40,7 +40,7 @@ sub toString{
     my $bal=($self->{cost} && $self->{cost} eq 'BAL');
     my $str=$bal?sprintf('     %-40s   = ','['.$self->{account}.']'):
 	sprintf('     %-40s   ',$self->{account});
-    if ($self->{quantity}){
+    if (defined($self->{quantity})){
 	if ($self->{commodity} eq '$'){
 	    $str.=sprintf('$%0.2f',$self->{quantity});
 	}else{
