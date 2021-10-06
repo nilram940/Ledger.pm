@@ -197,8 +197,9 @@ sub inv{
     
     @tran{qw(id payee)}=@{$arg->{invtran}}{qw(fitid memo)};
     $tran{date}=&getdate($arg->{invtran}->{dttrade});
-    $commodity=$data->{ticker}->{$arg->{secid}->{uniqueid}};
-    if ($arg->{subacctsec} eq 'CASH'){
+    my $secid=$arg->{secid}->{uniqueid};
+    $commodity=$data->{ticker}->{$secid};
+    if (!$secid){# $arg->{subacctsec} eq 'CASH'){
 	$tran{quantity}=$arg->{units}||$arg->{total};
 	$tran{type}=$arg->{incometype};
 	$commodity="USD";
