@@ -8,6 +8,7 @@ use Ledger::OFX;
 use Ledger::XML;
 use Ledger::CSV;
 use POSIX qw(strftime);
+#use Data::Dumper;
 
 sub new{
     my $class=shift;
@@ -65,21 +66,29 @@ sub addBalance{
     }else{
 	$transaction=new Ledger::Transaction(@_);
     }
-    # unless ($self->{balance}->{$account} &&
-    # 	$transaction->{date}< $self->{balance}->{$account}->{date}){
-    # 	$self->{balance}->{$account}=$transaction;
+    my $commodity=$transaction->{postings}->[0]->{commodity};
+    return unless $commodity;
 
-    # }
-    if ($self->{balance}->{$account}){
-	if ($transaction->{date}>$self->{balance}->{$account}->[0]->{date}){
-	    $self->{balance}->{$account}=[$transaction];
-	}elsif($transaction->{date}==$self->{balance}->{$account}->[0]->{date}){
-	    push @{$self->{balance}->{$account}},$transaction;
-	}
-    }else{
-	$self->{balance}->{$account}=[$transaction];
+    $self->{balance}->{$account} ||={};
+
+    my $bal=$self->{balance}->{$account};
+
+    unless ($bal->{$commodity} &&
+	$transaction->{date}< $bal->{$commodity}->{date}){
+	$bal->{$commodity}=$transaction;
     }
-    return $self->{balance}->{$account};
+    
+    # if ($self->{balance}->{$account}){
+    # 	if ($transaction->{date}>$self->{balance}->{$account}->[0]->{date}){
+    # 	    $self->{balance}->{$account}=[$transaction];
+    # 	}elsif($transaction->{date}==$self->{balance}->{$account}->[0]->{date}){
+    # 	    push @{$self->{balance}->{$account}},$transaction;
+    # 	}
+    # }else{
+    # 	$self->{balance}->{$account}=[$transaction];
+    # }
+    #print STDERR Dumper ($self->{balance});
+    return $bal->{$commodity};
 }
 
 sub fromXML{
@@ -202,7 +211,7 @@ sub addStmtTran{
     
     my $posting=$transaction->addPosting($account, $stmttrn->{quantity}+0,
 					 $stmttrn->{commodity},
-					 $stmttrn->{cost}+0,"ID: $key");
+					 ($stmttrn->{cost}||0)+0,"ID: $key");
     if ($handler){
 	if (ref ($handler) eq 'HASH'){
 	    $transaction=$self->transfer($transaction,$handler->{transfer})
@@ -475,7 +484,7 @@ sub update_file{
 	    print $writeh join("\n",(map {$_->toString} 
 				 (sort {$a->{date} <=> $b->{date}} @cleared),
 				     (sort {$a->{date} <=> $b->{date}} 
-				      map {@$_} (values %{$self->{balance}})),
+				      map {values %$_} (values %{$self->{balance}})),
 				     (sort {$a->{date} <=> $b->{date}} 
 				      @uncleared)))."\n\n";
 	    @append=();
