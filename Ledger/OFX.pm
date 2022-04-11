@@ -149,8 +149,12 @@ sub end{
 }
 
 sub stop{
-    foreach my $tran(@{$data->{check}}){
-	$tran->{commodity}=$data->{ticker}->{$tran->{commodity}};
+    foreach my $post (@{$data->{check}}){
+	my $commodity=$data->{ticker}->{$post->{commodity}};
+	$post->{commodity}=$commodity;
+	if($post->{account}!~/$commodity$/){
+	    $post->{account}.=":$commodity";
+	}
     }
     $callback=undef;
     #print Dumper($data->{prices}); 
