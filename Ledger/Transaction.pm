@@ -99,7 +99,10 @@ sub setPosting{
     
     
 	
-	
+my %STATE=(
+    'cleared' => " * ",
+    'pending' => " ! "
+    );
 sub toString{
     my $self=shift;
     return unless $self->{date};
@@ -109,7 +112,7 @@ sub toString{
     my $str=strftime('%Y/%m/%d', localtime $self->{date});
     $str.="=".strftime('%Y/%m/%d', localtime $self->{'aux-date'}) 
 	if $self->{'aux-date'};
-    $str.=($self->{state} && $self->{state} eq "cleared")?" * ":"   ";
+    $str.=($self->{state} && $STATE{$self->{state}})?$STATE{$self->{state}}:"   ";
     $str.='('.$self->{code}.') ' if $self->{code};
     $str.=$self->{payee};
     $str.='     ;'.$self->{note} if ($self->{note});

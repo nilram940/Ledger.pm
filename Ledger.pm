@@ -5,6 +5,7 @@ use Fcntl qw(SEEK_SET SEEK_CUR SEEK_END);
 use Storable;
 use Ledger::Transaction;
 use Ledger::OFX;
+use Ledger::JSON;
 use Ledger::XML;
 use Ledger::CSV;
 use POSIX qw(strftime);
@@ -132,8 +133,9 @@ sub fromStmt{
 	&Ledger::OFX::parsefile($stmt, $callback);
     }elsif ($stmt=~/.csv$/i){
 	&Ledger::CSV::parsefile($stmt, $csv->{$account}, $callback);
+    }elsif ($stmt=~/.json$/i){
+        &Ledger::JSON::parsefile($stmt, $callback);
     }
-
     return $self;
 
 }
@@ -147,9 +149,10 @@ sub StmtHandler{
 	
 sub addStmtBal{
     my $self=shift;
-    my $account=shift;
+    my $accdef=shift;
     my $balance=shift;
-
+    my $account=$balance->{account}||$accdef;
+    
     my $payee=(split(/:/, $account))[-1];
     $payee.=' Balance';
 	
@@ -166,9 +169,10 @@ sub addStmtBal{
 
 sub addStmtTran{
     my $self=shift;
-    my $account=shift;
+    my $accdef=shift;
     my $handlers=shift;
     my $stmttrn=shift;
+    my $account=$stmttrn->{account}||$accdef;
     
     my $key=&makeid($account,$stmttrn);
     my $payee=$stmttrn->{payee};
@@ -178,14 +182,15 @@ sub addStmtTran{
 	$self->{desc}->{$payee}=$self->{id}->{$key};
 	return;
     }
-    if ($account=~/Discover/){
-	my $dkey=$key;
-	substr($dkey,-5,5,'0');
-	if ($self->{id}->{$dkey}){
-		$self->{desc}->{$payee}=$self->{id}->{$key};
-		return;
-	}
-    }
+    
+    # if ($account=~/Discover/){
+    #     my $dkey=$key;
+    #     substr($dkey,-5,5,'0');
+    #     if ($self->{id}->{$dkey}){
+    #     	$self->{desc}->{$payee}=$self->{id}->{$key};
+    #     	return;
+    #     }
+    # }
     
     $self->{id}->{$key}=$payee;
     return if ($stmttrn->{quantity} == 0);
@@ -202,9 +207,8 @@ sub addStmtTran{
     }elsif ($self->{desc}->{$payee}){
 	$payee=$self->{desc}->{$payee};
     }
-	
     my $transaction=new Ledger::Transaction 
-	($stmttrn->{date}, "cleared", $stmttrn->{number}, 
+	($stmttrn->{date}, $stmttrn->{state} || "cleared", $stmttrn->{number}, 
 	 $payee);
     $transaction->{edit}=$self->{ofxfile};
     $transaction->{edit_pos}=-1;
@@ -220,9 +224,9 @@ sub addStmtTran{
 	}
     }
     if ($transaction){
-	$transaction->balance($self->{table},
+        $transaction->balance($self->{table},
 			      $self->getTransactions('uncleared'));
-	$self->addTransaction($transaction);
+        $self->addTransaction($transaction);
     }
 
     $posting=undef unless ($stmttrn->{commodity} && $stmttrn->{commodity}=~/^\d+/);
@@ -262,7 +266,7 @@ sub getTransactions{
 	return grep {$_->{state} ne 'cleared'} @{$self->{transactions}};
     }
     if ($filter eq 'balance'){
-	return (map {@$_} (values %{$self->{balance}}));
+	return (map {values %$_} (values %{$self->{balance}}));
     }
     if ($filter eq 'edit'){
 	return grep {$_->{edit} } @{$self->{transactions}};
