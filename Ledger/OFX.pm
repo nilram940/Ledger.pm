@@ -203,7 +203,8 @@ sub inv{
     $tran{date}=&getdate($arg->{invtran}->{dttrade});
     my $secid=$arg->{secid}->{uniqueid};
     $commodity=$data->{ticker}->{$secid};
-    if (!$secid){# $arg->{subacctsec} eq 'CASH'){
+    if (!$secid || ($arg->{incometype} && $arg->{incometype} eq 'DIV')){
+	        #($arg->{subacctsec} && $arg->{subacctsec} eq 'CASH')){
 	$tran{quantity}=$arg->{units}||$arg->{total};
 	$tran{type}=$arg->{incometype};
 	$commodity="USD";
