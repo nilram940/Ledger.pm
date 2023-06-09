@@ -150,6 +150,7 @@ sub balance{
 
 sub checkpending{
     my $self=shift;
+    return 0 unless $self->{state} eq "cleared";
     my @pending=@_;
     #print STDERR $self->{payee}."\n";
     my $candidate=(sort {$a->[0] <=> $b->[0]}
@@ -235,7 +236,8 @@ sub distance{
 	}
     } #Check numbers are the gold standard
     
-    my ($account,$quantity)=@{$self->getPosting(0)}{qw(account quantity)};
+    my ($account,$quantity,$id)=
+        @{$self->getPosting(0)}{qw(account quantity pendid)};
     my $subdist=($self->{date}-$comp->{date})/(5*24*3600);
     my $dist=$subdist*$subdist;
     my $num=-1;
@@ -246,6 +248,16 @@ sub distance{
 	($account ne $comp->getPosting($num)->{account});
     #print "num: $num\n";
     if ($num<$lim){
+        my $compid;
+        if ($id && ($compid=$comp->getPosting($num)->getid())){
+            $compid=~s/^[^-]*-//;
+            if ($compid eq $id ){
+                return (0,$num);
+            }else{
+                return (10,$num);
+            }
+        }
+                
 	if ($quantity==0){
 	    $subdist=10*($comp->getPosting($num)->{quantity}-$quantity);
 	}else{

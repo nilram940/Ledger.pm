@@ -223,7 +223,8 @@ sub addStmtTran{
 	    $transaction=&{$handler}($transaction);
 	}
     }
-    if ($transaction){
+    if ($transaction && $transaction->{date} > time-90*24*3600){
+        $posting->{pendid}=$stmttrn->{pendid} if $stmttrn->{pendid};
         $transaction->balance($self->{table},
 			      $self->getTransactions('uncleared'));
         $self->addTransaction($transaction);

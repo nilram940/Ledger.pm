@@ -24,6 +24,15 @@ sub cost{
     return $self->{commodity} eq '$' ? $self->{quantity}:$self->{cost};
 }
 
+sub getid{
+    my $self=shift;
+    my $note=$self->{note};
+    if ($note=~/ID:\s*(\S+)/){
+        return $1
+    }else{
+        return "";
+    }
+}
 sub fromXMLstruct{
     my $self=shift;
     my $xml=shift;
