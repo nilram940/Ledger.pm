@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use Ledger::Posting;
 use Date::Parse;
-use Text::Levenshtein;
+#use Text::Levenshtein;
 use POSIX qw(strftime);
 use Fcntl qw(SEEK_SET SEEK_CUR SEEK_END);
     
@@ -118,11 +118,11 @@ sub toString{
     $str.='     ;'.$self->{note} if ($self->{note});
     $str.="\n";
     $str.=join("\n",map {$_->toString} (@{$self->{postings}}))."\n";
-    if ($self->{text}){
-	my $orig=$self->{text};
-	$orig=~s/^/; /mg;
-	$str.="\n".$orig;
-    }
+    # if ($self->{text}){
+    # 	my $orig=$self->{text};
+    # 	$orig=~s/^/; /mg;
+    # 	$str.="\n".$orig;
+    # }
     return $str;
 }
 
@@ -271,12 +271,31 @@ sub distance{
     my $len=length($comp->{payee});
     my $payee=lc(substr $self->{payee},0,$len);
     #print STDERR $payee."\n";
-    $subdist=Text::Levenshtein::distance($payee,lc($comp->{payee}));
+    #$subdist=Text::Levenshtein::distance($payee,lc($comp->{payee}));
+    $subdist=strdist($payee,lc($comp->{payee}));
     $subdist=$subdist/$len;
     $dist+=$subdist*$subdist;
 				
     return sqrt($dist), $num;
 }
+sub strdist{
+    my ($str1, $str2)=@_;
+    my $str1len=length($str1);
+    my $str2len=length($str2);
+    my $dist=($str1len-$str2len);
+    my $stop=$str2len;
+    
+    if ($dist<0){
+	$dist=-$dist;
+	$stop=$str1len;
+    }
 
+    foreach my $i (0..$stop){
+	if (substr($str1,$i,1) ne substr($str2,$i,1)){
+	    $dist++;
+	}
+    }
+    return $dist;
+}
 1;
     
