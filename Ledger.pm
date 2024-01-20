@@ -310,6 +310,7 @@ sub makeid{
     my $id=(split(/:/,$account))[-1];
     $id=join ("", (map {substr ($_,0,1)} split (/\s+/, $id)));
     $id.='-';
+    $id.=$trdat->{salt}.'-' if $trdat->{salt};
     
     if ($trdat->{id}){
 	$id.=$trdat->{id};
