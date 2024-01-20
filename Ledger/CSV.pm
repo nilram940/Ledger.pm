@@ -9,7 +9,6 @@ sub parsefile{
     my $fields=$args->{fields};
     my $csvargs=$args->{csv_args}||{};
     my $tcsv=Text::CSV->new($csvargs);
-    my %csv;
     my $fd;
     my @trlist;
     
@@ -20,6 +19,7 @@ sub parsefile{
     }
     while(1){
 	last if $tcsv->eof;
+        my %csv;
 	my $row=$tcsv->getline($fd);
 	next unless $row;
 	@csv{@{$fields}}=@$row;
@@ -31,6 +31,7 @@ sub parsefile{
 	$csv{quantity}=-$csv{quantity} if $args->{reverse};
 	$csv{payee}=~s/^\s*//;
 	$csv{payee}=~s/~.*$//;
+        &{$args->{process}}(\%csv) if $args->{process};
 	&{$callback}(\%csv);
 	#push @trlist,{%csv};
     }
