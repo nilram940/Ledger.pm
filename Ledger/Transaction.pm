@@ -3,7 +3,6 @@ use strict;
 use warnings;
 use Ledger::Posting;
 use Date::Parse;
-#use Text::Levenshtein;
 use POSIX qw(strftime);
 use Fcntl qw(SEEK_SET SEEK_CUR SEEK_END);
     
