@@ -34,6 +34,7 @@ sub getaccounts{
         $ledgername=~s/\s+/ /g;
         $ledgername=~s/[^: A-Z]//gi;
         $ledgername=~s/([\w']+)/\u\L$1/g;
+	$ledgername=~s/(\bMC\b)/\U$1/i;
         my $balance=$account->{balances}->{current};
         $balance=-$balance if ($islia);
         foreach my $sec (values %{$securities}){

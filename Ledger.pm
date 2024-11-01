@@ -182,16 +182,6 @@ sub addStmtTran{
 	$self->{desc}->{$payee}=$self->{id}->{$key};
 	return;
     }
-    
-    # if ($account=~/Discover/){
-    #     my $dkey=$key;
-    #     substr($dkey,-5,5,'0');
-    #     if ($self->{id}->{$dkey}){
-    #     	$self->{desc}->{$payee}=$self->{id}->{$key};
-    #     	return;
-    #     }
-    # }
-    
     $self->{id}->{$key}=$payee;
     return if ($stmttrn->{quantity} == 0);
     my $handler=$handlers->{$account}->{$payee}||
@@ -223,7 +213,7 @@ sub addStmtTran{
 	    $transaction=&{$handler}($transaction);
 	}
     }
-    if ($transaction && $transaction->{date} > time-90*24*3600){
+    if ($transaction && $transaction->{date} > time-90*24*3600 && $transaction->{date}> 1709877600){
         $posting->{pendid}=$stmttrn->{pendid} if $stmttrn->{pendid};
         $transaction->balance($self->{table},
 			      $self->getTransactions('uncleared'));
