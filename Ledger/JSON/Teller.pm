@@ -79,7 +79,7 @@ sub addtransactions{
             $tran{number}=int($1);
         }
             
-        $tran{state}=($transaction->{details}->{processing_status} eq 'complete')?'cleared':'pending';
+        $tran{state}=($transaction->{status} eq 'pending')?'pending':'cleared';
 	# if ($transaction->{details}->{counterparty}->{name}){
 	#     $tran{payee}=$transaction->{details}->{counterparty}->{name};
 	# }
