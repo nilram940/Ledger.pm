@@ -215,8 +215,9 @@ sub addStmtTran{
     }
     if ($transaction && $transaction->{date} > time-90*24*3600 && $transaction->{date}> 1709877600){
         $posting->{pendid}=$stmttrn->{pendid} if $stmttrn->{pendid};
-        $transaction->balance($self->{table},
-			      $self->getTransactions('uncleared'));
+        my $tag=$transaction->balance($self->{table},
+                                      $self->getTransactions('uncleared'));
+        $transaction=$self->transfer($transaction,$tag) if $tag;
         $self->addTransaction($transaction);
     }
 
@@ -299,6 +300,7 @@ sub makeid{
     my $trdat=shift;
     my $id=(split(/:/,$account))[-1];
     $id=join ("", (map {substr ($_,0,1)} split (/\s+/, $id)));
+    $id.='!' if $trdat->{state} eq 'pending';
     $id.='-';
     $id.=$trdat->{salt}.'-' if $trdat->{salt};
     
