@@ -61,7 +61,7 @@ sub toString{
 	    }
 	}
     }
-    $str.=' ; '.$self->{note} if $self->{note};
+    $str.='  ; '.$self->{note} if $self->{note};
     return $str;
 }
 
