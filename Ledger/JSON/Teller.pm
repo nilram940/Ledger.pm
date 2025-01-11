@@ -24,6 +24,7 @@ my %typemap=(
     'credit' => 'Credit Card',
     'depository' => 'Current Assets'
     );
+
 sub getaccounts{
     my $account_list=shift;
     my $callback=shift;
@@ -86,13 +87,16 @@ sub addtransactions{
         $tran{date}=str2time($transaction->{date});
         $tran{quantity}=-$tran{quantity} if $neg;
         $tran{account}=$account->{ledgername};
-        $tran{pendid}=$transaction->{pending_transaction_id}
-                    if $transaction->{pending_transaction_id};
+        $tran{pendid}=$transaction->{pending_transaction_id} || $transaction->{id};
+                    #if $transaction->{pending_transaction_id};
         my ($t,$p)=&{$callback}(\%tran);
         if ($t && ($tran{state} eq 'cleared') && ($tran{date}>$account->{lasttrans})){
 	    print STDERR "Updating lasttrans:", $account->{ledgername}, "\n";
 	    print STDERR Dumper($transaction);
-            $account->{lasttrans}=$tran{date};  
+            $account->{lasttrans}=$tran{date};
+            if ($transaction->{running_balance}){
+                $account->{balance}=$transaction->{running_balance};
+            }
         }
     }
     
