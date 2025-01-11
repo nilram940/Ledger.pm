@@ -129,6 +129,7 @@ sub balance{
     my $self=shift;
     my $table=shift;
     my @pending=@_;
+    my $tag;
     return if ($self->checkpending(@pending) ||
 	       $self->getPosting(1));
 
@@ -143,13 +144,23 @@ sub balance{
 	    'Expenses:Miscellaneous';
 	$info="INFO: UNKNOWN (0.00%)";
     }
-    $self->addPosting($account,undef,undef,undef,$info)
+    if ($account=~/^Lia|^Ass/){
+        if ($self->{postings}->[0]->{quantity}<0){
+            $tag=$account
+        }else{
+            $tag=$self->{postings}->[0]->{account}
+        }
+        $tag=(split(/:/, $tag))[-1];
+    }else{ 
+        $self->addPosting($account,undef,undef,undef,$info)
+    }
+    return $tag;
 	
 }
 
 sub checkpending{
     my $self=shift;
-    return 0 unless $self->{state} eq "cleared";
+    return 0 unless ($self->{state} eq "cleared" || $self->{state} eq "pending");
     my @pending=@_;
     #print STDERR $self->{payee}."\n";
     my $candidate=(sort {$a->[0] <=> $b->[0]}
@@ -184,7 +195,7 @@ sub checkpending{
 	    return 1;
 	}
     }
-    $candidate->{state}='cleared';
+    $candidate->{state}=$self->{state};
     $candidate->{'aux-date'}=$candidate->{date} 
            unless $candidate->{date} == $self->{date};
     $candidate->{date}=$self->{date};
