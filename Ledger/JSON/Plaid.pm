@@ -66,7 +66,7 @@ sub addtransactions{
         $tran{state}=$transaction->{pending}?'pending':'cleared';
         $tran{payee}||=$transaction->{name};
         $tran{date}=str2time($transaction->{date});
-        $tran{quantity}=-$tran{quantity} if $account->{islia};
+        $tran{quantity}=-$tran{quantity}; #if $account->{islia};
         $tran{account}=$account->{ledgername};
         $tran{pendid}=$transaction->{pending_transaction_id}
                     if $transaction->{pending_transaction_id};
