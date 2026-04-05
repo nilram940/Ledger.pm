@@ -203,17 +203,24 @@ sub inv{
     $tran{date}=&getdate($arg->{invtran}->{dttrade});
     my $secid=$arg->{secid}->{uniqueid};
     $commodity=$data->{ticker}->{$secid};
-    if (!$secid || ($arg->{incometype} && $arg->{incometype} eq 'DIV')){
+    if (0 && (!$secid || ($arg->{incometype} && $arg->{incometype} eq 'DIV'))){
 	        #($arg->{subacctsec} && $arg->{subacctsec} eq 'CASH')){
 	$tran{quantity}=$arg->{units}||$arg->{total};
 	$tran{type}=$arg->{incometype};
 	$commodity="USD";
     }else{
 	@tran{qw(quantity cost type)}=@{$arg}{qw(units total incometype)};
-	$tran{cost}=-$tran{cost};
+	$tran{cost}=abs($tran{cost});
 	$tran{commodity}=$commodity||$arg->{secid}->{uniqueid};
     }
+    if ( $tran{date} > 1748754000 ) {
+        print Dumper(\%tran)
+    }
     my ($transaction, $posting)=&{$callback}(\%tran);
+    if ($arg->{inv401ksource} && $posting){
+        $posting->{account}.=':'.$arg->{inv401ksource}
+    }
+        
     push @{$data->{check}},$posting if $posting && !$commodity;
     $data->{transactions}||=$transaction;
 }
@@ -271,6 +278,10 @@ sub invpos{
     if ($data->{transactions}){
 	my ($transaction,$posting)=&{$callback}(\%balance);
 	push @{$data->{check}},$posting;
+        if ($arg->{inv401ksource} && $posting){
+            $posting->{account}.=':'.$arg->{inv401ksource}
+        }
+
     }
  
 }

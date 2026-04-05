@@ -197,7 +197,7 @@ sub checkpending{
     }
     $candidate->{state}=$self->{state};
     $candidate->{'aux-date'}=$candidate->{date} 
-           unless $candidate->{date} == $self->{date};
+           unless ($candidate->{'aux-date'} || ($candidate->{date} == $self->{date}));
     $candidate->{date}=$self->{date};
     $candidate->{edit}=$self->{edit}||$self->{file};
     if ($self->{file}){

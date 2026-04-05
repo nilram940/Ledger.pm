@@ -30,11 +30,15 @@ sub getaccounts{
     foreach my $account (@{$account_list}){
         my $islia=$lia{$account->{type}}||0;
         my $ledgername=($islia)?"Liabilities":"Assets";
-        $ledgername.=":".$account->{subtype}.":".($account->{official_name}||$account->{name});
+        my $subtype = $account->{subtype};
+        $subtype = 'Current Assets' if ($subtype eq 'savings' || $subtype eq 'checking' );
+        $ledgername.=":".$subtype.":".($account->{ledger_name}||$account->{official_name}||$account->{name});
         $ledgername=~s/\s+/ /g;
         $ledgername=~s/[^: A-Z]//gi;
         $ledgername=~s/([\w']+)/\u\L$1/g;
 	$ledgername=~s/(\bMC\b)/\U$1/i;
+	$ledgername=~s/:American Express/:USAA American Express/i;
+        $ledgername=~s/(usaa )/\U$1/gi;
         my $balance=$account->{balances}->{current};
         $balance=-$balance if ($islia);
         foreach my $sec (values %{$securities}){

@@ -44,7 +44,7 @@ sub parsefile{
 sub ledgerCSV{
     my $ledger=shift;
     my $file=shift;
-    
+    $ledger->{transfers}||={};
     my @fields=qw(id file bpos epos xnote key price date code payee account 
     commodity amount state note); 
 
@@ -97,15 +97,43 @@ sub ledgerCSV{
 	$posting->{bpos}=$csv{bpos};
 	$posting->{epos}=$csv{epos};
 	$transaction->{epos}=$csv{epos};
-	if ($csv{account}=~/^Equity:Transfers:(\w+)/){
-	    $transaction->{transfer}=$1;
-	}
+        if ($csv{account}=~/^Equity:Transfers:(.+)/){
+            $transaction->{transfer}=$1;
+            &build_transfer($ledger->{transfer}, $transaction, $1, $csv{amount}, $posting);
+        }elsif ($csv{account}=~/^(Assets|Liabilities)/ && 
+                (!$csv{note} || $csv{note}!~/ID:/)){
+            my $tag=(split(/:/,$csv{account}))[-1];
+            $transaction->{transfer}=$tag;
+            &build_transfer($ledger->{transfer}, $transaction, $tag, $csv{amount}, $posting);
+        }
 	$id=$csv{id};
     }
     $tcsv->eof or die $tcsv->error_diag();
     close($fd);
     return $ledger;
 }
+
+sub build_transfer{
+    my $transfers=shift;
+    my $transaction=shift;
+    my $tag=shift;
+    my $amount=shift;
+    my $posting=shift;
+    my $key=sprintf("$tag-%.2f",abs($amount));
+    $transfers->{$key}||=[];
+    my $transfer=$transfers->{$key};
+    my $idx=0;
+    $idx++ while ($idx < @{$transfer} &&
+        !(abs($transfer->[$idx]->[1]->cost()+
+              $posting->cost())<.0001
+          && abs($transaction->{date}-$transfer->[$idx]->[0]->{date})<= 5*24*3600 ));
+    if ($idx < @{$transfer}){
+        splice(@{$transfer},$idx,1);
+        delete $transfers->{$key} unless @{$transfer};
+    }else{
+        push @{$transfer},[$transaction, $posting];
+    }
+}    
 
 
 1;	

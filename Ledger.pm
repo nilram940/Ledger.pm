@@ -109,7 +109,12 @@ sub fromStmt{
     my $handlers=shift;
     my $csv=shift;
 
-
+    if (-z $stmt) {
+        print STDERR "Skipping empty file $stmt\n";
+        return
+    }
+            
+    
     my $account=$stmt;
     $account=~s/-.*//;
     $account=~s!.*/!!;
@@ -184,8 +189,12 @@ sub addStmtTran{
     }
     $self->{id}->{$key}=$payee;
     return if ($stmttrn->{quantity} == 0);
+    my $cleanpay=$payee;
+    $cleanpay=~s/\s+\*{3}.*$//;
+        
     my $handler=$handlers->{$account}->{$payee}||
-	$handlers->{$account}->{$self->{desc}->{$payee}||""};
+	$handlers->{$account}->{$self->{desc}->{$payee}||""}||
+        $handlers->{$account}->{$cleanpay};
     
     unless ($handler){
 	my $key=(split(/\s+/,$payee))[0];
@@ -213,7 +222,8 @@ sub addStmtTran{
 	    $transaction=&{$handler}($transaction);
 	}
     }
-    if ($transaction && $transaction->{date} > time-90*24*3600 && $transaction->{date}> 1709877600){
+    if ($transaction) {
+    #    if ($transaction && $transaction->{date} > time-90*24*3600 && $transaction->{date}> 1709877600){
         $posting->{pendid}=$stmttrn->{pendid} if $stmttrn->{pendid};
         my $tag=$transaction->balance($self->{table},
                                       $self->getTransactions('uncleared'));
@@ -266,8 +276,56 @@ sub getTransactions{
 
     return @{$self->{transactions}};
 }
-
 sub transfer{
+    my ($self,$transaction,$tag)=@_;
+    $self->{transfer}||={};
+    $transaction->{transfer}=$tag;
+    my $account="Equity:Transfers:$tag";
+    my $amount=abs($transaction->getPosting(0)->cost());
+    my $amtkey=sprintf('%.2f',$amount);
+    my $key="$tag-$amtkey";
+
+    $self->{transfer}->{$key}||=[];
+    my $transfer=$self->{transfer}->{$key};
+    my $idx=0;
+
+    while ($idx < @{$transfer}){
+        my ($other,$opost)=@{$transfer->[$idx]};
+        my $datediff=abs($transaction->{date}-$other->{date})/(24*3600);
+        if (abs($opost->cost()+
+                $transaction->getPosting(0)->cost())<.0001
+            && $datediff <= 5){
+            splice(@{$transfer},$idx,1);
+            delete $self->{transfer}->{$key} unless @{$transfer};
+
+            # Rewrite the matched posting to equity if needed
+            if ($opost->{account} ne $account){
+                $opost->{account}=$account;
+                $other->{edit}||=$other->{file};
+                $other->{edit_pos}||=$other->{bpos};
+                $other->{edit_end}||=$other->{epos};
+            }
+
+            if ($datediff < 1){
+                $other->setPosting(1,$transaction->getPosting(0));
+                $other->{payee}=$transaction->{payee} 
+                    if (length($transaction->{payee})>length($other->{payee}));
+                return undef;
+            }else{
+                $transaction->addPosting($account);
+                return $transaction;
+            }
+        }
+        $idx++;
+    }
+
+    # No match — park it
+    push @{$transfer},[$transaction, $transaction->getPosting(0)];
+    $transaction->addPosting($account);
+    return $transaction;
+}
+
+sub transfer2{
     my ($self,$transaction,$tag)=@_;
     $self->{transfer}||={};
     $transaction->{transfer}=$tag;
@@ -300,7 +358,7 @@ sub makeid{
     my $trdat=shift;
     my $id=(split(/:/,$account))[-1];
     $id=join ("", (map {substr ($_,0,1)} split (/\s+/, $id)));
-    $id.='!' if $trdat->{state} eq 'pending';
+    $id.='!' if $trdat->{state} && ($trdat->{state} eq 'pending');
     $id.='-';
     $id.=$trdat->{salt}.'-' if $trdat->{salt};
     
@@ -402,6 +460,7 @@ sub update{
 	    open ($fd, "<", $file) || die "Can't open $file: $!";
 	}
 	$transaction->findtext($fd);
+        $transaction->{edit_pos} ||= $transaction->{bpos};
     }
     close($fd) if $fd;
     
