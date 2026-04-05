@@ -1,0 +1,737 @@
+# Ledger Perl Module Documentation
+
+## Overview
+
+The `Ledger` module is a Perl-based personal accounting system that reads, parses, and writes transactions in [Ledger-CLI](https://ledger-cli.org/) format. It supports importing financial data from multiple sources (OFX/QFX, CSV, JSON) and intelligently matches pending transactions against existing ones using heuristic scoring.
+
+---
+
+## Module Structure
+
+| Module | Description |
+|--------|-------------|
+| `Ledger` | Core ledger object: transaction management, import orchestration, file writing |
+| `Ledger::Transaction` | Represents a single transaction with postings, state, and file positions |
+| `Ledger::Posting` | Represents a single posting (account + amount) within a transaction |
+| `Ledger::CSV` | Parses CSV statement files and the `ledger csv` command output |
+| `Ledger::OFX` | Parses OFX/QFX bank statement files |
+| `Ledger::JSON` | Dispatches JSON parsing to Plaid or Teller submodules |
+| `Ledger::JSON::Plaid` | Parses Plaid API JSON exports (banking + investment accounts) |
+| `Ledger::JSON::Teller` | Parses Teller API JSON exports |
+
+
+---
+
+## `Ledger`
+
+### Constructor
+
+```perl
+my $ledger = Ledger->new(
+    file       => '/path/to/ledger.dat',   # optional: existing ledger file
+    payeetab   => '/path/to/payees.stor',  # optional: Storable payee description cache
+    accounttab => '/path/to/accounts.txt', # optional: account number -> name mapping
+    idtag      => 'ID',                    # optional: tag name for transaction IDs (default: 'ID')
+);
+```
+
+On construction, the ledger:
+1. Loads the payee description cache (via `Storable`)
+2. Loads the account number mapping table
+3. Runs `ledger csv` to populate transactions from the existing ledger file
+4. Builds a frequency table used for auto-categorization
+
+---
+
+### Methods
+
+#### `addTransaction(%args | $transaction)`
+
+Adds a transaction to the ledger. Accepts either a `Ledger::Transaction` object or named constructor arguments.
+
+```perl
+$ledger->addTransaction($transaction_obj);
+$ledger->addTransaction($date, $state, $code, $payee, $note);
+```
+
+Returns the `Ledger::Transaction` object.
+
+---
+
+#### `addBalance($account, %args | $transaction)`
+
+Records a balance assertion for an account. Only stores the most recent balance per commodity.
+
+```perl
+$ledger->addBalance('Assets:Checking', $transaction);
+```
+
+---
+
+#### `fromStmt($filename, \%handlers, \%csv_config)`
+
+Imports transactions from a bank statement file. The account name is derived from the filename (the part before the first `-`).
+
+```perl
+$ledger->fromStmt('checking-2024-01.ofx', \%handlers);
+$ledger->fromStmt('checking-2024-01.csv', \%handlers, \%csv_config);
+$ledger->fromStmt('checking-2024-01.json', \%handlers);
+```
+
+Supported file types:
+- `.ofx` / `.qfx` — OFX/QFX format
+- `.csv` — Delimited text (requires CSV config)
+- `.json` — Plaid or Teller API export
+
+Each transaction in the file is passed to either `addStmtBal` (for balance records) or `addStmtTran` (for regular transactions).
+
+---
+
+#### `addStmtTran($account, \%handlers, \%stmttrn)`
+
+Processes a single imported transaction. Key behaviors:
+
+- Deduplicates via the transaction ID cache (`$self->{id}`)
+- Looks up a handler by account + payee, falling back to the payee description cache
+- Attempts to match against existing uncleared transactions using `Transaction::balance`
+- Only adds transactions dated within the last 90 days (and after 2024-03-08)
+
+**Handlers** can be:
+- A code reference: `sub { my $t = shift; ... return $t }`
+- A hash ref with `payee` and/or `transfer` keys for simple remapping
+
+---
+
+#### `addStmtBal($account, \%balance)`
+
+Processes a balance record from a statement. Creates a balance-assertion posting.
+
+---
+
+#### `transfer($transaction, $tag)`
+
+Implements double-entry transfer matching. When two accounts transfer funds between each other, this method pairs the two sides of the transfer using the `Equity:Transfers:$tag` account as an intermediary until both sides are seen.
+
+```perl
+$ledger->transfer($transaction, 'Savings');
+```
+
+---
+
+#### `getTransactions($filter)`
+
+Returns a list of transactions matching the given filter.
+
+```perl
+my @all        = $ledger->getTransactions();
+my @cleared    = $ledger->getTransactions('cleared');
+my @uncleared  = $ledger->getTransactions('uncleared');
+my @balances   = $ledger->getTransactions('balance');
+my @editable   = $ledger->getTransactions('edit');
+my @custom     = $ledger->getTransactions(sub { $_[0]->{payee} =~ /Amazon/ });
+```
+
+---
+
+#### `gentable()`
+
+Builds an internal frequency table mapping `source account → payee → destination account`. Used by `Transaction::balance` for probabilistic auto-categorization. Called automatically during construction.
+
+---
+
+#### `toString()` / `toString2($filter)`
+
+Serializes transactions back to Ledger-CLI text format.
+
+- `toString()` — outputs all transactions and balances sorted by date
+- `toString2()` — outputs cleared transactions, then balance assertions, then a `; ----UNCLEARED-----` separator, then uncleared transactions. Accepts an optional filter (same values as `getTransactions`).
+
+---
+
+#### `update()`
+
+Writes all modified transactions back to their source files. For each file:
+- Transactions with `edit_pos >= 0` are updated in-place
+- New transactions (with `edit_pos == -1`) are appended at the OFX insertion point
+- Balance assertions are written alongside new transactions
+- A backup (`.bak`) is made before overwriting
+
+Also persists the payee description cache via `Storable`.
+
+---
+
+#### `fromXML($xml_string)`
+
+Populates the ledger from a Ledger-CLI XML export string.
+
+```perl
+$ledger->fromXML($xml_string);
+```
+
+---
+
+### Internal Helpers
+
+#### `makeid($account, \%stmttrn)`
+
+Generates a stable deduplication key for a statement transaction. Format:
+
+```
+{AccountInitials}[-{salt}]-{fitid}
+  or
+{AccountInitials}[-{salt}]-{YYYY/MM/DD}+${amount}
+```
+
+A `!` is appended for pending transactions.
+
+---
+
+#### `getacctnum($filename)`
+
+Loads a pipe-delimited account number → ledger account name mapping file.
+
+```
+1234 | Assets:Checking:MyBank Checking
+5678 | Liabilities:Credit Card:MyBank Visa
+```
+
+---
+
+#### `getaccount($acctid, \%accounts)`
+
+Resolves a 4-digit account ID suffix to a full account name and generates a short code from the account's last component.
+
+---
+
+## `Ledger::Transaction`
+
+Represents a single Ledger-CLI transaction.
+
+### Fields
+
+| Field | Description |
+|-------|-------------|
+| `date` | Unix timestamp of the transaction date |
+| `state` | `'cleared'`, `'pending'`, or `''` |
+| `code` | Check number or other reference code |
+| `payee` | Payee/description string |
+| `note` | Transaction-level note/memo |
+| `postings` | Array of `Ledger::Posting` objects |
+| `file` | Source `.dat` file path |
+| `bpos` | Byte offset of transaction start in source file |
+| `epos` | Byte offset of transaction end in source file |
+| `edit` | Target file for writing changes |
+| `edit_pos` | Byte offset for in-place edit (`-1` = append) |
+| `edit_end` | End offset for in-place edit |
+| `transfer` | Transfer tag if this is part of a transfer pair |
+| `aux-date` | Secondary/effective date |
+
+### Constructor
+
+```perl
+my $t = Ledger::Transaction->new($date, $state, $code, $payee, $note);
+```
+
+### Methods
+
+#### `addPosting($account, $quantity, $commodity, $cost, $note)`
+
+Appends a posting to the transaction. Accepts either a `Ledger::Posting` object or raw fields.
+
+#### `getPosting($index)`
+
+Returns the posting at `$index`. Negative indices work as in Perl arrays (e.g., `-1` is the last posting).
+
+#### `setPosting($index, $posting)`
+
+Replaces the posting at `$index`.
+
+#### `getPostings()`
+
+Returns all postings as a list.
+
+#### `toString()`
+
+Serializes the transaction to Ledger-CLI text. If the transaction has a cached `text` field and has not been edited, returns the original text verbatim.
+
+#### `findtext($fh)`
+
+Locates the exact byte range of this transaction in its source file by reading backwards from the first posting's `bpos`. Populates `bpos`, `epos`, and `text`.
+
+#### `balance($table, @pending_transactions)`
+
+Attempts to auto-complete a transaction that has only one posting. 
+
+1. Calls `checkpending` to see if it matches an existing uncleared transaction
+2. If no match, uses the frequency table to predict the destination account
+3. Falls back to `Income:Miscellaneous` or `Expenses:Miscellaneous`
+4. Returns a transfer tag if the destination is an asset or liability account
+
+#### `checkpending(@pending_transactions)`
+
+Finds the best-matching pending transaction using `distance()` scoring. If a match is found (score < 1.0), merges the two transactions by updating the pending transaction's posting, date, and state. Returns `1` on match, `0` otherwise.
+
+#### `distance($other_transaction)`
+
+Computes a heuristic match score between two transactions. Lower is better; scores below 1.0 are considered matches. The score combines:
+- Date proximity (5-day half-weight window)
+- Amount difference (10x weight)
+- Payee string similarity (custom character-distance function)
+- Check number equality (gold standard: returns 0 immediately on match)
+- Pending ID match (returns 0 immediately on match)
+
+---
+
+## `Ledger::Posting`
+
+Represents a single line item within a transaction.
+
+### Fields
+
+| Field | Description |
+|-------|-------------|
+| `account` | Full account name (e.g., `Assets:Checking:MyBank`) |
+| `quantity` | Numeric amount |
+| `commodity` | Currency or ticker symbol (default: `$`) |
+| `cost` | Total cost in `$` for non-dollar commodities; `'BAL'` for balance assertions |
+| `note` | Inline note/memo |
+
+### Constructor
+
+```perl
+my $p = Ledger::Posting->new($account, $quantity, $commodity, $cost, $note);
+```
+
+### Methods
+
+#### `cost()`
+
+Returns the effective dollar cost: `quantity` for `$` postings, `cost` field for commodity postings.
+
+#### `getid()`
+
+Extracts the ID tag value from the posting note. Returns `""` if no `ID: ...` note is present.
+
+#### `toString()`
+
+Serializes the posting to a Ledger-CLI posting line. Handles:
+- Dollar amounts: `$0.00` format
+- Commodity amounts: `N TICKER @@ $cost` format
+- Balance assertions: `= $0.00` format
+- Inline notes
+
+---
+
+## `Ledger::CSV`
+
+### `ledgerCSV($ledger, $file)`
+
+Runs `ledger csv` with custom format fields and populates a `Ledger` object with the resulting transactions and postings. This is called automatically by `Ledger->new`.
+
+Custom fields extracted per posting:
+
+```
+transaction_id, file, bpos, epos, xnote, ID_tag, price, date,
+code, payee, account, commodity, amount, state, note
+```
+
+### `parsefile($file, \%args, $callback)`
+
+Parses a CSV statement file, calling `$callback->(\%transaction)` for each row.
+
+`%args` fields:
+
+| Key | Description |
+|-----|-------------|
+| `fields` | Ordered array of field names matching CSV columns |
+| `csv_args` | Hashref passed to `Text::CSV->new` |
+| `reverse` | If true, negates the quantity |
+| `process` | Optional coderef for per-row post-processing |
+
+---
+
+## `Ledger::OFX`
+
+### `parsefile($filename, $callback)`
+
+Parses an OFX or QFX file. Calls `$callback->(\%transaction)` for each transaction or balance record.
+
+Handles the following OFX aggregates:
+
+| OFX Element | Handler | Description |
+|-------------|---------|-------------|
+| `STMTTRN` | `stmttrn` | Bank/card transactions |
+| `INVBUY` / `INVSELL` | `inv` | Investment buy/sell |
+| `INCOME` | `inv` | Investment income |
+| `REINVEST` | `inv` | Dividend reinvestment |
+| `LEDGERBAL` | `ledgerbal` | Cash balance assertion |
+| `INVBAL` | `invbal` | Investment cash balance |
+| `INVPOS` | `invpos` | Investment position (shares held) |
+| `SECINFO` | `secinfo` | Security metadata (ticker, price) |
+| `ACCTID` | `acctid` | Account identifier |
+
+The callback receives a hashref with these keys:
+
+| Key | Description |
+|-----|-------------|
+| `date` | Unix timestamp |
+| `quantity` | Amount (positive = credit, negative = debit) |
+| `payee` | Payee/memo string |
+| `id` | OFX `FITID` |
+| `number` | Check number (or `'ATM'`) |
+| `commodity` | Ticker symbol for investment transactions |
+| `cost` | Total dollar cost for investment transactions; `'BAL'` for balances |
+| `type` | Transaction or income type |
+
+---
+
+## `Ledger::JSON`
+
+### `parsefile($file, $callback)`
+
+Reads and dispatches a JSON file to the appropriate parser:
+- **Hash** root → `Ledger::JSON::Plaid`
+- **Array** root → `Ledger::JSON::Teller`
+
+---
+
+## `Ledger::JSON::Plaid`
+
+Parses a Plaid API export JSON file containing `accounts`, `transactions`, `investment_transactions`, and `securities`.
+
+### Account Name Derivation
+
+Account names are derived from Plaid account metadata:
+
+```
+Assets:$subtype:$official_name
+Liabilities:$subtype:$official_name
+```
+
+Names are title-cased, stripped of non-alphanumeric characters (except `:` and space), and `MC` is uppercased.
+
+### Balance Handling
+
+Balance assertions are emitted for each account whose `lasttrans` date is non-zero (i.e., at least one new transaction was imported). The balance is taken from the Plaid `current` balance field, negated for liability accounts.
+
+---
+
+## `Ledger::JSON::Teller`
+
+Parses a Teller API export. The JSON root is an array of account objects, each containing a `transactions` array.
+
+### Account Name Derivation
+
+```
+Assets:Current Assets:$institution $account_name
+Liabilities:Credit Card:$institution $account_name
+```
+
+`USAA` is uppercased; all other names are title-cased.
+
+### Sign Convention
+
+For liability accounts, the sign of transactions is auto-detected from the first transaction: if the first transaction is a `payment` type, the sign logic inverts.
+
+### Running Balance
+
+If a transaction includes a `running_balance` field, it supersedes the account's static balance for the balance assertion.
+
+---
+
+## Balance Assertions
+
+Balance assertions verify that an account's running total matches the bank's reported balance at a point in time. In Ledger-CLI format they look like:
+
+```
+2026/02/02 * Checking Balance
+     [Assets:Checking:MyBank Checking]        = $2500.00
+```
+
+The bracketed account name and `=` syntax tell Ledger-CLI to assert the account's balance rather than post a transaction against it.
+
+---
+
+### Sources
+
+Balance assertions are generated automatically during statement import whenever the source data includes a reported balance. Each parser signals this by setting `cost => 'BAL'` on the record passed to the callback, which routes it to `addStmtBal` instead of `addStmtTran`.
+
+| Source | Balance Field |
+|--------|--------------|
+| OFX/QFX — bank/card | `LEDGERBAL` element |
+| OFX/QFX — investment cash | `INVBAL` element |
+| OFX/QFX — investment positions | `INVPOS` element (one per holding) |
+| Plaid | `accounts[].balances.current` |
+| Teller | `accounts[].balances.ledger` (or `running_balance` from most recent transaction if present) |
+
+For liability accounts (Plaid and Teller), the balance is negated before storage.
+
+---
+
+### Storage
+
+Balance assertions are kept in `$self->{balance}`, a two-level hash keyed by account then commodity:
+
+```perl
+$self->{balance}{'Assets:Checking:MyBank'}{'$'} = $transaction;
+```
+
+Only the **most recent** assertion per account/commodity is retained — `addBalance` silently discards any older one for the same account/commodity pair. They are never added to `$self->{transactions}`.
+
+They can be retrieved via:
+
+```perl
+my @assertions = $ledger->getTransactions('balance');
+```
+
+---
+
+### Output
+
+Balance assertions are written in two contexts:
+
+**`update()`** — written to the ledger file at the OFX insertion point, interleaved with new cleared and uncleared transactions in date order. If there is no OFX insertion point they are appended at the end of the file.
+
+**`toString2()`** — emitted between the cleared transactions and the `; ----UNCLEARED-----` separator.
+
+In both cases the payee is derived from the account name: the last colon-delimited component with `" Balance"` appended (e.g., `"MyBank Checking Balance"`).
+
+---
+
+## Handlers
+
+The `%handlers` hash passed to `fromStmt` controls how incoming statement transactions are categorized and transformed. It is structured as a two-level hash:
+
+```perl
+my %handlers = (
+    $account_key => {
+        $payee_key => $handler,
+        ...
+    },
+    ...
+);
+```
+
+The outer key is the same account key as the statement filename prefix (e.g., `'1234'`). The inner key is matched against the incoming payee string using the lookup cascade described below.
+
+---
+
+### Handler Lookup Cascade
+
+For each incoming transaction, the handler is resolved in this order:
+
+**1. Exact payee match**
+```perl
+$handlers{$account}{$payee}
+```
+The raw payee string from the statement is looked up directly.
+
+**2. Cached description match**
+```perl
+$handlers{$account}{ $ledger->{desc}{$payee} }
+```
+If a prior import already mapped this raw payee to a canonical name (via the payee cache), that canonical name is tried as the key.
+
+**3. First-word match**
+```perl
+$handlers{$account}{ (split /\s+/, $payee)[0] }
+```
+Only the first whitespace-delimited token of the payee string is used. Useful for payees like `"AMAZON MKTP US*AB12CD"` where the prefix is stable but the suffix varies.
+
+If none of these match, no handler is applied and the transaction proceeds to auto-categorization via the frequency table.
+
+---
+
+### Handler Types
+
+#### Hash ref — payee rename and/or transfer
+
+```perl
+'TRANSFER TO SAVINGS' => { payee => 'Savings Transfer', transfer => 'Savings' }
+```
+
+| Key | Required | Description |
+|-----|----------|-------------|
+| `payee` | yes | Replaces the raw statement payee on the created transaction |
+| `transfer` | no | Triggers transfer-pairing logic with this tag (see `transfer()`) |
+
+The `payee` rename happens **before** the transaction is constructed, so the canonical name is what gets stored in the ledger and in the payee cache.
+
+If `transfer` is set, `addStmtTran` calls `$ledger->transfer($transaction, $tag)` immediately after construction, bypassing auto-categorization entirely. The transaction will either be paired with its counterpart from another account or parked under `Equity:Transfers:$tag` to await it.
+
+#### Code ref — full control
+
+```perl
+'WHOLE FOODS' => sub {
+    my $transaction = shift;
+    $transaction->addPosting('Expenses:Groceries');
+    return $transaction;
+}
+```
+
+The code ref receives the partially-constructed `Ledger::Transaction` object, which at this point has:
+- Its date, state, code, and payee set
+- Exactly one posting (the source account with amount and `ID:` note)
+
+The code ref **must** return the transaction object, or `undef` to suppress the transaction entirely (it will not be added to the ledger). It may add postings, modify fields, or call `$ledger->transfer()` manually.
+
+Note that after the code ref returns, auto-categorization (`Transaction::balance`) still runs if the transaction has only one posting — so the code ref only needs to add a second posting if it wants to override the automatic categorization.
+
+---
+
+### Payee Cache Interaction
+
+When a statement transaction matches an existing ID in `$ledger->{id}`, it is a duplicate and skipped — but before returning, `addStmtTran` updates the payee description cache:
+
+```perl
+$ledger->{desc}{$raw_payee} = $canonical_payee;
+```
+
+This means that on subsequent imports, previously seen raw payees are automatically mapped to their canonical names even without an explicit handler entry. The cache is persisted across runs via `Storable` when `update()` is called.
+
+---
+
+### Handler Example
+
+```perl
+my %handlers = (
+    '1234' => {
+        # Exact match with transfer pairing
+        'TRANSFER TO SAVINGS' => { payee => 'Savings Transfer', transfer => 'Savings' },
+
+        # First-word match catches "AMAZON MKTP US*..." variants
+        'AMAZON' => { payee => 'Amazon' },
+
+        # Code ref for custom categorization
+        'WHOLE FOODS' => sub {
+            my $t = shift;
+            $t->addPosting('Expenses:Groceries');
+            return $t;
+        },
+
+        # Return undef to suppress a transaction entirely
+        'VOID CHECK' => sub { return undef },
+    },
+    '5678' => {
+        'AUTOPAY PAYMENT' => { payee => 'Credit Card Payment', transfer => 'CreditCard' },
+    },
+);
+```
+
+---
+
+## File Format Notes
+
+### Ledger-CLI Text Format
+
+Transactions are written in standard Ledger-CLI format:
+
+```
+2024/03/15 * (1234) Whole Foods Market     ; optional note
+     Assets:Checking:MyBank                  $-87.43
+     Expenses:Groceries
+```
+
+- States: `*` = cleared, `!` = pending, ` ` = uncleared
+- Balance assertions use `= $amount` syntax
+- Commodity postings use `N TICKER @@ $cost` syntax
+
+### Statement Filename Convention
+
+`fromStmt` derives the account key from the filename by stripping everything from the first `-` onward, then any leading directory path, then the extension:
+
+```
+{account_key}-{anything}.{ext}
+
+1234-2024-03.ofx       → account key = "1234"
+1234-20240315.csv      → account key = "1234"
+/path/to/1234-mar.qfx  → account key = "1234"
+```
+
+The extracted key must exactly match an entry in the `accounttab` file, which maps keys to full Ledger account names:
+
+```
+1234 | Assets:Checking:MyBank Checking
+5678 | Liabilities:Credit Card:MyBank Visa
+```
+
+For **CSV files**, the same key must also be present as a top-level key in the `%csv` config hash passed to `fromStmt`, since the CSV format and field layout is account-specific:
+
+```perl
+my %csv = (
+    '1234' => {
+        fields   => [qw(date payee quantity)],
+        reverse  => 1,
+        csv_args => { sep_char => ',' },
+    },
+);
+$ledger->fromStmt('1234-2024-03.csv', \%handlers, \%csv);
+```
+
+If the key is not found in `%csv`, `parsefile` will be called with an undefined args hashref and will likely fail.
+
+---
+
+## Usage Example
+
+```perl
+use Ledger;
+
+# Load existing ledger and payee cache
+my $ledger = Ledger->new(
+    file       => 'personal.dat',
+    payeetab   => 'payees.stor',
+    accounttab => 'accounts.txt',
+);
+
+# accounts.txt contains:
+#   1234 | Assets:Checking:MyBank Checking
+#   5678 | Liabilities:Credit Card:MyBank Visa
+
+# Define handlers for known payees
+my %handlers = (
+    '1234' => {
+        'AMAZON'       => { payee => 'Amazon' },
+        'TRANSFER OUT' => { payee => 'Transfer', transfer => 'Savings' },
+        'Whole Foods'  => sub {
+            my $t = shift;
+            $t->addPosting('Expenses:Groceries');
+            return $t;
+        },
+    },
+);
+
+# CSV config keyed by the same account key as the filename prefix
+my %csv = (
+    '5678' => {
+        fields   => [qw(date payee quantity)],
+        reverse  => 1,
+        csv_args => { sep_char => ',' },
+    },
+);
+
+# Import statements — filename prefix must match a key in accounttab
+$ledger->fromStmt('1234-2024-03.ofx', \%handlers);
+$ledger->fromStmt('5678-2024-03.csv', \%handlers, \%csv);
+$ledger->fromStmt('1234-2024-03.json', \%handlers);
+
+# Write changes back to the ledger file
+$ledger->update();
+
+# Or dump to stdout
+print $ledger->toString2();
+```
+
+---
+
+## Dependencies
+
+| Module | Purpose |
+|--------|---------|
+| `Storable` | Persist payee description cache |
+| `Text::CSV` | Parse CSV files |
+| `Date::Parse` | Parse date strings to Unix timestamps |
+| `JSON` | Parse Plaid/Teller JSON exports |
+| `POSIX` | `strftime` for date formatting |
+| `Fcntl` | File seek constants |
+| `Data::Dumper` | Debugging |
