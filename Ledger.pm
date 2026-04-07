@@ -508,70 +508,78 @@ sub update_file{
     }
     my $lastpos=0;
     print STDERR "file=$file\n";
-    rename($file,"$file.bak");
-    open (my $writeh, ">", $file);
-    open (my $readh, "<", "$file.bak");
 
-    foreach my $pos (sort {$a <=> $b} (keys %posmap)){
-	my $transaction=$posmap{$pos};
-	
-	# unless ($transaction->{bpos}>0){
-	#     print STDERR $transaction->toString.'\n';
-	# }
-	
-	my $len=$pos-$lastpos-1;
-	seek ($readh, $lastpos, SEEK_SET);   # read from last read
-	read $readh, (my $buffer), $len;     #  to beginning of transaction 
-	print $writeh $buffer;               # copy to new file
+    # Write to a temp file first so a crash never destroys the original.
+    # The .bak is kept as a safety copy regardless of outcome.
+    my $tmpfile = "$file.tmp$$";
+    rename($file, "$file.bak") || die "Cannot backup $file: $!";
 
-	
-	if (ref($transaction)){
-	    $lastpos=(($pos == $transaction->{bpos})?
-		      $transaction->{epos}:
-		      $transaction->{edit_end});
-	    if (($transaction -> {edit} eq $file) && 
-		($transaction->{edit_pos} == $pos)) {
-		print $writeh "\n".$transaction->toString();
-	    }
-	}elsif($ofx){
-	    my @cleared=grep {$_->{state} eq 'cleared' } @append;
-	    my @uncleared=grep {$_->{state} ne 'cleared' } @append;
-	    print $writeh "\n; ".localtime."\n\n";
+    eval {
+        open(my $writeh, '>', $tmpfile) || die "Cannot write $tmpfile: $!";
+        open(my $readh,  '<', "$file.bak") || die "Cannot read $file.bak: $!";
 
-	    print $writeh join("\n",(map {$_->toString} 
-				 (sort {$a->{date} <=> $b->{date}} @cleared),
-				     (sort {$a->{date} <=> $b->{date}} 
-				      map {values %$_} (values %{$self->{balance}})),
-				     (sort {$a->{date} <=> $b->{date}} 
-				      @uncleared)))."\n\n";
-	    @append=();
-	    $lastpos=$pos;
-	}
-	
-	    
+        foreach my $pos (sort {$a <=> $b} (keys %posmap)){
+            my $transaction=$posmap{$pos};
+
+            my $len=$pos-$lastpos-1;
+            die "update_file: negative offset (pos=$pos lastpos=$lastpos) in $file\n"
+                if $len < 0;
+            seek ($readh, $lastpos, SEEK_SET);
+            read $readh, (my $buffer), $len;
+            print $writeh $buffer;
+
+            if (ref($transaction)){
+                $lastpos=(($pos == $transaction->{bpos})?
+                          $transaction->{epos}:
+                          $transaction->{edit_end});
+                if (($transaction->{edit} eq $file) &&
+                    ($transaction->{edit_pos} == $pos)) {
+                    print $writeh "\n".$transaction->toString();
+                }
+            } elsif ($ofx) {
+                my @cleared   = grep { $_->{state} eq 'cleared'  } @append;
+                my @uncleared = grep { $_->{state} ne 'cleared'  } @append;
+                print $writeh "\n; ".localtime."\n\n";
+                print $writeh join("\n",
+                    (map { $_->toString }
+                        (sort { $a->{date} <=> $b->{date} } @cleared),
+                        (sort { $a->{date} <=> $b->{date} }
+                             map { values %$_ } (values %{$self->{balance}})),
+                        (sort { $a->{date} <=> $b->{date} } @uncleared)
+                    ))."\n\n";
+                @append=();
+                $lastpos=$pos;
+            }
+        }
+
+        # copy remainder of file
+        seek ($readh, $lastpos, SEEK_SET);
+        my $buflen = 1024;
+        my $buffer;
+        while (!eof($readh)) {
+            read $readh, $buffer, $buflen;
+            print $writeh $buffer;
+        }
+        close($readh);
+
+        if (@append) {
+            print $writeh '; '.localtime."\n\n";
+            print $writeh join("\n",
+                (map { $_->toString }
+                     (sort { $a->{date} <=> $b->{date} } @append)
+                ))."\n\n";
+        }
+        close($writeh);
+
+        rename($tmpfile, $file) || die "Cannot install $tmpfile as $file: $!";
+    };
+    if ($@) {
+        my $err = $@;
+        unlink $tmpfile if -f $tmpfile;
+        # Restore original if the destination is absent or zero-length
+        rename("$file.bak", $file) unless -s $file;
+        die $err;
     }
-    # copy to end of file.
-    seek ($readh, $lastpos, SEEK_SET);
-    my $len=1024;
-    my $buffer;
-
-    while (!eof($readh)){
-	read $readh, $buffer, $len;
-	print $writeh $buffer;
-    } 
-    close($readh);
-
-    unless (@append){
-	close ($writeh);
-	return;
-    }
-    print $writeh '; '.localtime."\n\n";
-
-    print $writeh join("\n",(map {$_->toString} 
-			     (sort {$a->{date} <=> $b->{date}} 
-			      @append)))."\n\n";
-
-    close($writeh);
 
 }
 
