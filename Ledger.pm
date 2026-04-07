@@ -14,8 +14,20 @@ use POSIX qw(strftime);
 sub new{
     my $class=shift;
     my %args=@_;
-    my $self={ transactions => [], 
-	       balance=>{}}; 
+
+    # Serve the fully-parsed object from a Storable cache when the source
+    # file hasn't changed.  Callers that write to the ledger must
+    # unlink "$file.store" afterwards to force a rebuild.
+    if ($args{file}) {
+        my $store = "$args{file}.store";
+        if (-f $store && (stat($args{file}))[9] <= (stat($store))[9]) {
+            print STDERR "store cache: $store\n";
+            return retrieve($store);
+        }
+    }
+
+    my $self={ transactions => [],
+	       balance=>{}};
     bless $self, $class;
     $self->{desc}=($args{payeetab} && (-f $args{payeetab}))
 	? retrieve($args{payeetab}):{};
@@ -23,10 +35,17 @@ sub new{
     $self->{id}={};
     $self->{payeetab}=$args{payeetab};
     $self->{idtag}=$args{idtag} || 'ID';
-    
+
     Ledger::CSV::ledgerCSV($self, $args{file});
 
     $self->gentable;
+
+    if ($args{file}) {
+        my $store = "$args{file}.store";
+        my $tmp   = "$store.$$";
+        eval { store($self, $tmp) && rename($tmp, $store) };
+        warn "object cache write failed: $@\n" if $@;
+    }
 
     return $self;
 }
