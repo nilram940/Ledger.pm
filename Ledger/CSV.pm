@@ -59,15 +59,36 @@ sub ledgerCSV{
 	
     my $csv=q(ledger csv).$ledgerargs;
 
-    print STDERR $csv."\n";
-        
+    # Cache the raw ledger csv output next to the ledger file.
+    # Re-run ledger only when the source file is newer than the cache.
+    # Callers that write to the ledger should unlink "$file.cache" afterwards.
+    my $cache = $file ? "$file.cache" : undef;
+    my $fd;
+
+    if ($cache && -f $cache && (stat($file))[9] <= (stat($cache))[9]) {
+        print STDERR "cache: $cache\n";
+        open($fd, '<', $cache) || die "Can't open cache $cache: $!";
+    } else {
+        print STDERR $csv."\n";
+        if ($cache) {
+            my $tmp = "$cache.$$";
+            open(my $pipe, '-|', $csv) || die "Can't run ledger: $!";
+            open(my $out,  '>',  $tmp ) || die "Can't write $tmp: $!";
+            while (read($pipe, my $buf, 65536)) { print $out $buf }
+            close $pipe;
+            die "ledger csv failed (exit ".($?>>8).")\n" if $?;
+            close $out;
+            rename($tmp, $cache) || die "Can't install cache $tmp: $!";
+            open($fd, '<', $cache) || die "Can't read $cache: $!";
+        } else {
+            open($fd, '-|', $csv) || die "Can't open ledger pipe: $!";
+        }
+    }
+
     my $tcsv=Text::CSV->new({escape_char => '\\'});
     my %csv;
     my $transaction;
     my $id=-1;
-    my $fd;
-	
-    open($fd, "-|", $csv) || die "Can't open $csv: $!";
     
     while(my $row=$tcsv->getline($fd)){
 	@csv{@fields}=@$row;
