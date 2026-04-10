@@ -1,0 +1,73 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+`Ledger.pm` is a Perl library for personal accounting that reads, parses, and writes transactions in [Ledger-CLI](https://ledger-cli.org/) format. It imports financial data from OFX/QFX, CSV, and JSON (Plaid/Teller APIs), matches pending transactions against existing ones using heuristic scoring, and writes changes back to ledger files in-place.
+
+## Dependencies
+
+Perl modules required: `Storable`, `Text::CSV`, `Date::Parse`, `JSON`, `XML::Parser`, `POSIX`, `Fcntl`
+
+External tool: `ledger` CLI (used via subprocess in `Ledger::CSV::ledgerCSV` to populate transactions from an existing `.dat` file)
+
+## No Build or Test Infrastructure
+
+There is no `Makefile`, test suite, or CI configuration. The library is used by requiring it from external scripts. Validation is done by running against real ledger/statement files.
+
+## Architecture
+
+### Module Responsibilities
+
+| Module | Role |
+|--------|------|
+| `Ledger.pm` | Core orchestrator: loads existing ledger via `ledger csv`, manages transaction list, runs import pipeline, writes changes back |
+| `Ledger/Transaction.pm` | Single transaction: date/state/payee/postings, file byte-position tracking (`bpos`/`epos`/`edit_pos`), matching logic |
+| `Ledger/Posting.pm` | Single posting (account + amount + commodity), serialization |
+| `Ledger/CSV.pm` | Parses CSV statements and `ledger csv` output |
+| `Ledger/OFX.pm` | Parses OFX/QFX bank statement files |
+| `Ledger/JSON.pm` | Dispatches JSON to Plaid or Teller submodule |
+| `Ledger/JSON/Plaid.pm` | Parses Plaid API exports (banking + investment) |
+| `Ledger/JSON/Teller.pm` | Parses Teller API exports |
+| `Ledger/XML.pm` | Parses Ledger-CLI XML export format |
+
+### Import Pipeline
+
+`fromStmt($filename, \%handlers, \%csv_config)` drives the import. The account name is inferred from the filename (prefix before the first `-`). Each parsed transaction is routed through `addStmtTran`, which:
+1. Deduplicates via ID cache (`makeid()` generates a stable key from account initials + FITID or date+amount)
+2. Looks up a handler (code ref or hashref with `payee`/`transfer` keys) by account+payee, falling back to the payee description cache (`Storable`-persisted)
+3. Matches against existing uncleared transactions using `Transaction::balance()` — a scoring function based on date proximity, amount difference, payee similarity, check number, and pending ID
+4. Only accepts transactions within 90 days and after 2024-03-08
+
+### Transfer Matching
+
+`transfer($transaction, $tag)` implements double-entry transfer pairing. Unmatched sides are parked under `Equity:Transfers:$tag` until the other side arrives (matched by date within 5 days and opposing amount).
+
+### Auto-Categorization
+
+`gentable()` builds a frequency table: `source_account → payee → destination_account`. Called automatically at construction, used by `Transaction::balance` when no explicit handler provides a category. Falls back to `Income:Miscellaneous` or `Expenses:Miscellaneous`.
+
+### File-Based In-Place Editing
+
+Transactions track their byte positions in source `.dat` files (`bpos`, `epos`). `update()` rewrites modified transactions in-place and appends new ones at a designated insertion marker. A `.bak` backup is created before modifying any file.
+
+### Account Resolution
+
+Account numbers are loaded from a pipe-delimited file (`accounttab`):
+```
+1234 | Assets:Checking:MyBank
+```
+`getaccount()` resolves 4-digit suffixes from statement data to full account names.
+
+## Key Conventions
+
+- All objects are hashref-based, blessed into their package with `bless $self, $class`
+- Dates are stored as Unix timestamps internally; formatted with `strftime` for output
+- Transaction state values: `'cleared'` (`*`), `'pending'` (`!`), or `''` (uncleared)
+- `edit_pos == -1` means append; `edit_pos >= 0` means in-place update at that byte offset
+- The `idtag` constructor parameter (default `'ID'`) controls which ledger tag stores transaction IDs
+
+## Full API Reference
+
+See `Ledger-docs.md` for complete method signatures and examples.
