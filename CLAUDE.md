@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Perl modules required: `Storable`, `Text::CSV`, `Date::Parse`, `JSON`, `XML::Parser`, `POSIX`, `Fcntl`
 
-External tool: `ledger` CLI (used via subprocess in `Ledger::CSV::ledgerCSV` to populate transactions from an existing `.dat` file)
+External tool: `ledger` CLI (used via subprocess in `Ledger::CSV::ledgerCSV` to populate transactions from an existing `.dat` file, unless a fresh Storable object cache exists)
 
 ## No Build or Test Infrastructure
 
@@ -22,7 +22,7 @@ There is no `Makefile`, test suite, or CI configuration. The library is used by 
 
 | Module | Role |
 |--------|------|
-| `Ledger.pm` | Core orchestrator: loads existing ledger via `ledger csv`, manages transaction list, runs import pipeline, writes changes back |
+| `Ledger.pm` | Core orchestrator: loads existing ledger (via Storable cache or `ledger csv`), manages transaction list, runs import pipeline, writes changes back |
 | `Ledger/Transaction.pm` | Single transaction: date/state/payee/postings, file byte-position tracking (`bpos`/`epos`/`edit_pos`), matching logic |
 | `Ledger/Posting.pm` | Single posting (account + amount + commodity), serialization |
 | `Ledger/CSV.pm` | Parses CSV statements and `ledger csv` output |
@@ -48,9 +48,15 @@ There is no `Makefile`, test suite, or CI configuration. The library is used by 
 
 `gentable()` builds a frequency table: `source_account → payee → destination_account`. Called automatically at construction, used by `Transaction::balance` when no explicit handler provides a category. Falls back to `Income:Miscellaneous` or `Expenses:Miscellaneous`.
 
+### Object Cache
+
+`Ledger->new` serializes the fully-built object to `$file.store` (via `Storable`) after a cold load. On the next construction with the same file, if `$file.store` is newer than `$file`, the cached object is returned immediately — no `ledger csv` subprocess, no CSV parsing.
+
+**Cache invalidation**: any caller that writes to the ledger file (via `update()`) must unlink `$file.store` afterwards to force a rebuild on the next load. Failure to do so means subsequent scripts in the same pipeline will read a stale object.
+
 ### File-Based In-Place Editing
 
-Transactions track their byte positions in source `.dat` files (`bpos`, `epos`). `update()` rewrites modified transactions in-place and appends new ones at a designated insertion marker. A `.bak` backup is created before modifying any file.
+Transactions track their byte positions in source `.dat` files (`bpos`, `epos`). `update()` writes to a `$file.tmp$$` temp file first, then renames it into place; a `.bak` is kept as a safety copy. New transactions are appended at a designated insertion marker (`ofxpos`); in-place edits overwrite the exact byte range of the original transaction.
 
 ### Account Resolution
 

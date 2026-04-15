@@ -35,11 +35,15 @@ my $ledger = Ledger->new(
 );
 ```
 
-On construction, the ledger:
+On construction, the ledger checks for a Storable object cache at `$file.store`. If the cache is newer than `$file`, it is returned immediately (no subprocess, no parsing). Otherwise:
+
 1. Loads the payee description cache (via `Storable`)
 2. Loads the account number mapping table
 3. Runs `ledger csv` to populate transactions from the existing ledger file
 4. Builds a frequency table used for auto-categorization
+5. Writes the fully-built object to `$file.store` for future fast loads
+
+**Cache invalidation**: callers that write to the ledger (via `update()`) must unlink `$file.store` afterwards to force a rebuild on the next load.
 
 ---
 
