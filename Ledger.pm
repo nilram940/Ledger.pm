@@ -317,17 +317,21 @@ sub transfer{
             splice(@{$transfer},$idx,1);
             delete $self->{transfer}->{$key} unless @{$transfer};
 
-            # Rewrite the matched posting to equity if needed
-            if ($opost->{account} ne $account){
+            # Ensure edit markers are set so the matched transaction gets rewritten.
+            $other->{edit}||=$other->{file};
+            $other->{edit_pos}||=$other->{bpos};
+            $other->{edit_end}||=$other->{epos};
+            # Rewrite the matched posting to Equity for uncleared/pending transactions
+            # (e.g. auto-categorised as Expenses/Assets before the transfer was recognised).
+            if ($opost->{account} ne $account && $other->{state} ne 'cleared'){
                 $opost->{account}=$account;
-                $other->{edit}||=$other->{file};
-                $other->{edit_pos}||=$other->{bpos};
-                $other->{edit_end}||=$other->{epos};
             }
 
             if ($datediff < 1){
+                $other->{state}=$transaction->{state}
+                    if $transaction->{state} eq 'cleared';
                 $other->setPosting(1,$transaction->getPosting(0));
-                $other->{payee}=$transaction->{payee} 
+                $other->{payee}=$transaction->{payee}
                     if (length($transaction->{payee})>length($other->{payee}));
                 return undef;
             }else{

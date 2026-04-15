@@ -110,11 +110,23 @@ Processes a balance record from a statement. Creates a balance-assertion posting
 
 #### `transfer($transaction, $tag)`
 
-Implements double-entry transfer matching. When two accounts transfer funds between each other, this method pairs the two sides of the transfer using the `Equity:Transfers:$tag` account as an intermediary until both sides are seen.
+Implements double-entry transfer matching. When two accounts transfer funds between each other (e.g., a checking payment to a credit card), this method pairs the two sides using `Equity:Transfers:$tag` as an intermediary until both sides have been seen.
 
 ```perl
-$ledger->transfer($transaction, 'Savings');
+$ledger->transfer($transaction, 'Visa');
 ```
+
+The transfer store (`$ledger->{transfer}`) is a hash keyed by `"$tag-$amount"`. Each entry holds a list of `[$transaction, $posting]` pairs waiting for their counterpart.
+
+**Matching condition**: two sides are paired when `abs(cost_A + cost_B) < 0.0001` (opposing signs) and the transaction dates are within 5 days. The amount key uses the absolute value, so both sides index under the same key regardless of sign.
+
+**Same-day match** (`datediff < 1`): the existing transaction is merged in-place — its state is promoted to cleared, posting[1] is replaced with the incoming posting, and the payee is updated if the incoming one is longer. The incoming transaction is discarded (returns `undef`).
+
+**Cross-day match** (`1 ≤ datediff ≤ 5`): both transactions are kept. An `Equity:Transfers:$tag` posting is appended to the incoming transaction and it is added to the ledger normally.
+
+**No match**: the incoming transaction is parked in the transfer store with an `Equity:Transfers:$tag` posting appended, awaiting its counterpart from a future import.
+
+When a match is found and the existing (parked) transaction's `Equity:Transfers:$tag` posting does not already hold the correct account, it is rewritten — but only if the transaction is not already cleared (cleared transactions are left unchanged).
 
 ---
 
@@ -221,8 +233,8 @@ Represents a single Ledger-CLI transaction.
 | `bpos` | Byte offset of transaction start in source file |
 | `epos` | Byte offset of transaction end in source file |
 | `edit` | Target file for writing changes |
-| `edit_pos` | Byte offset for in-place edit (`-1` = append) |
-| `edit_end` | End offset for in-place edit |
+| `edit_pos` | Byte offset for in-place edit; `0` = position not yet resolved (set by `findtext` during `update()`); `-1` = append at OFX insertion point |
+| `edit_end` | End offset of the original text to be replaced |
 | `transfer` | Transfer tag if this is part of a transfer pair |
 | `aux-date` | Secondary/effective date |
 
@@ -269,7 +281,16 @@ Attempts to auto-complete a transaction that has only one posting.
 
 #### `checkpending(@pending_transactions)`
 
-Finds the best-matching pending transaction using `distance()` scoring. If a match is found (score < 1.0), merges the two transactions by updating the pending transaction's posting, date, and state. Returns `1` on match, `0` otherwise.
+Finds the best-matching uncleared/pending transaction from `@pending_transactions` using `distance()` scoring. Returns `1` on match (score < 1.0) and merges; returns `0` otherwise.
+
+**Transfer block**: if `$self->{transfer}` is set (the incoming transaction is half of a transfer), the non-matching posting of the candidate is inspected. If that posting is not already an `Equity:Transfers:*` account and not a real `Assets` or `Liabilities` account, the candidate is rewritten: the matched posting is replaced with `Equity:Transfers:$tag` and the method returns early without fully merging. This handles the case where an uncleared transaction was manually categorised to a placeholder account before the transfer was recognised. Real asset/liability accounts on the other side are left intact.
+
+**Quantity blanking**: after the matched posting is updated with the imported data, the last posting of the candidate has its quantity cleared (so ledger computes the balance automatically). The blank is applied only when the matched posting is not the last one — if the match is at the final posting index the imported amount is preserved as-is.
+
+**Edit position**: how the merged transaction is written back to disk depends on which side has a source file:
+- If the incoming transaction has a `file` (e.g., a previously-imported but uncleared entry), it is rewritten at that file's byte position.
+- If only the candidate has a `file` (the common case: a new CSV/OFX import matched an existing uncleared entry), the candidate's ledger-file position is used for an in-place overwrite.
+- If neither has a `file`, the merged transaction is appended.
 
 #### `distance($other_transaction)`
 
@@ -326,7 +347,7 @@ Serializes the posting to a Ledger-CLI posting line. Handles:
 
 ### `ledgerCSV($ledger, $file)`
 
-Runs `ledger csv` with custom format fields and populates a `Ledger` object with the resulting transactions and postings. This is called automatically by `Ledger->new`.
+Runs `ledger csv` with custom format fields and populates a `Ledger` object with the resulting transactions and postings. Called automatically by `Ledger->new`.
 
 Custom fields extracted per posting:
 
@@ -334,6 +355,13 @@ Custom fields extracted per posting:
 transaction_id, file, bpos, epos, xnote, ID_tag, price, date,
 code, payee, account, commodity, amount, state, note
 ```
+
+**Transfer store population**: while loading, `ledgerCSV` pre-populates `$ledger->{transfer}` so that the current import session can match against existing half-transfers in the ledger file. Two kinds of postings are added:
+
+- `Equity:Transfers:$tag` postings — these are parked placeholders from a previous session. The tag is extracted from the account name, and a negated copy of the posting (sign-flipped quantity) is stored so that an incoming same-sign posting cancels it.
+- `Assets` or `Liabilities` postings with no `ID:` note — these belong to transfers where one side was imported without an ID (e.g. a manually-entered transfer where only the bank side has an ID). The last component of the account name is used as the tag, and again a negated copy is stored.
+
+In both cases the negated copy is stored so that `transfer()`'s matching condition (`abs(cost_A + cost_B) < 0.0001`) evaluates to zero when the opposing side arrives.
 
 ### `parsefile($file, \%args, $callback)`
 

@@ -44,7 +44,7 @@ sub parsefile{
 sub ledgerCSV{
     my $ledger=shift;
     my $file=shift;
-    $ledger->{transfers}||={};
+    $ledger->{transfer}||={};
     my @fields=qw(id file bpos epos xnote key price date code payee account 
     commodity amount state note); 
 
@@ -99,12 +99,20 @@ sub ledgerCSV{
 	$transaction->{epos}=$csv{epos};
         if ($csv{account}=~/^Equity:Transfers:(.+)/){
             $transaction->{transfer}=$1;
-            &build_transfer($ledger->{transfer}, $transaction, $1, $csv{amount}, $posting);
-        }elsif ($csv{account}=~/^(Assets|Liabilities)/ && 
+            # Negate the posting cost so transfer() matching is sign-consistent with
+            # the same-session path, which stores the opposing asset/liability posting.
+            my %neg = %$posting;
+            $neg{quantity} = -($posting->{quantity}||0);
+            &build_transfer($ledger->{transfer}, $transaction, $1, $csv{amount},
+                            bless(\%neg, ref $posting));
+        }elsif ($csv{account}=~/^(Assets|Liabilities)/ &&
                 (!$csv{note} || $csv{note}!~/ID:/)){
             my $tag=(split(/:/,$csv{account}))[-1];
             $transaction->{transfer}=$tag;
-            &build_transfer($ledger->{transfer}, $transaction, $tag, $csv{amount}, $posting);
+            my %neg = %$posting;
+            $neg{quantity} = -($posting->{quantity}||0);
+            &build_transfer($ledger->{transfer}, $transaction, $tag, $csv{amount},
+                            bless(\%neg, ref $posting));
         }
 	$id=$csv{id};
     }

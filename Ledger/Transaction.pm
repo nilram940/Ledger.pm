@@ -183,7 +183,8 @@ sub checkpending{
     if ($self->{transfer}){
 	my $posting=$candidate->getPosting(1 - $match); #Assumes only 2 postings
 	if ($posting->{account} !~/^Equity/ &&
-	    $posting->{account} ne $self->getPosting(1)->{account}){ 
+	    $posting->{account} !~/^(Assets|Liabilities)/ &&
+	    $posting->{account} ne $self->getPosting(1)->{account}){
 	    if ($candidate->{file} && ! $candidate->{bpos}){
 		$candidate->findtext;
 	    }
@@ -199,19 +200,28 @@ sub checkpending{
     $candidate->{'aux-date'}=$candidate->{date} 
            unless ($candidate->{'aux-date'} || ($candidate->{date} == $self->{date}));
     $candidate->{date}=$self->{date};
-    $candidate->{edit}=$self->{edit}||$self->{file};
     if ($self->{file}){
+	# Imported transaction is itself in a file — write it at that position
 	$self->findtext unless $self->{bpos};
+	$candidate->{edit}=$self->{edit}||$self->{file};
 	$candidate->{edit_pos}=$self->{bpos};
+	$candidate->{edit_end}=$self->{epos};
+    }elsif($candidate->{file}){
+	# New import (no file) matched an existing uncleared — overwrite it in the ledger
+	$candidate->{edit}=$candidate->{file};
+	# edit_pos=0 triggers findtext in update() when bpos not yet set
+	$candidate->{edit_pos}=$candidate->{bpos}||0;
+	$candidate->{edit_end}=$candidate->{epos};
     }else{
+	$candidate->{edit}=$self->{edit}||$self->{file};
 	$candidate->{edit_pos}=-1;
     }
-    $candidate->{edit_end}=$self->{epos};
     #$candidate->{edit_pos}=$self->{bpos};
     $self->getPosting(0)->{bpos}=$candidate->getPosting($match)->{bpos};
     $self->getPosting(0)->{epos}=$candidate->getPosting($match)->{epos};
     $candidate->setPosting($match, $self->getPosting(0));
-    $candidate->getPosting(-1)->{quantity}='';
+    my $last = $#{$candidate->{postings}};
+    $candidate->getPosting($last)->{quantity}='' if $match < $last;
     %{$self}=%{$candidate};
 
     $candidate->{date} = 0;

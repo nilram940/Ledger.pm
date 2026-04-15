@@ -1,0 +1,25 @@
+; Test ledger for transfer matching scenarios
+
+; Scenario 1: Half-transfer from a previous import session.
+; The Checking side was already imported; Equity:Transfers is the placeholder.
+; Expected: when Visa-statement.csv is imported, this transaction gets completed
+; by replacing Equity:Transfers:Visa with the real Liabilities:Visa posting.
+2026/03/01 * Credit Card Payment
+    Assets:Checking                    -$500.00    ;ID: CHK-001
+    Equity:Transfers:Visa
+
+; Scenario 2: Manually entered transfer with both real accounts but no ID on the Visa side.
+; Expected: when Visa-statement.csv is imported, the Liabilities:Visa posting gets
+; an ID and the transaction is cleared (2a.iii fix: Assets:Checking must NOT be
+; replaced by Equity:Transfers:Visa).
+2026/03/05 ! Credit Card Payment
+    Assets:Checking                    -$300.00    ;ID: CHK-002
+    Liabilities:Visa
+
+; Scenario 3: Uncleared expense where the bank account is posting[1].
+; Expected: when Checking-2026-03.csv is imported, the Expenses:Coffee posting
+; keeps its amount and the Assets:Checking posting is updated with the imported
+; data (2a.ii fix: last posting quantity must NOT be blanked when $match == $last).
+2026/03/20 ! Coffee Shop
+    Expenses:Coffee                     $12.50
+    Assets:Checking                    -$12.50
