@@ -330,7 +330,18 @@ sub transfer{
             if ($datediff < 1){
                 $other->{state}=$transaction->{state}
                     if $transaction->{state} eq 'cleared';
-                $other->setPosting(1,$transaction->getPosting(0));
+                # Find the posting whose account matches the incoming account so
+                # we update the right slot (e.g. posting[0] for a Checking import
+                # that matches a 'Checking-N' queue entry).  Fall back to 1 when
+                # not found (the normal Equity:Transfers placeholder case).
+                my $new_acct=$transaction->getPosting(0)->{account};
+                my $target=1;
+                for my $i (0..$#{$other->{postings}}){
+                    if ($other->getPosting($i)->{account} eq $new_acct){
+                        $target=$i; last;
+                    }
+                }
+                $other->setPosting($target,$transaction->getPosting(0));
                 $other->{payee}=$transaction->{payee}
                     if (length($transaction->{payee})>length($other->{payee}));
                 return undef;
@@ -527,7 +538,10 @@ sub update_file{
     my %posmap = map &{$posfilter}($_),  (@edit);
 
     if ($ofx && @append){
-	$posmap{$self->{ofxpos}}=-1;
+        # Use //= so an existing in-place edit at ofxpos is not overwritten.
+        # If the matched pending transaction sits at ofxpos, the @append list
+        # falls through to the end-of-file block below instead.
+	$posmap{$self->{ofxpos}}//=-1;
     }
     my $lastpos=0;
     print STDERR "file=$file\n";

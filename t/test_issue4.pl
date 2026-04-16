@@ -82,8 +82,12 @@ copy('issue4b-Checking.csv', "$dir/Checking-2026-04b.csv")  or die "copy: $!";
 my $ledger4b = Ledger->new(file => $f4b);
 
 my $handlers4b = {
-    'Liabilities:Visa' => { '' => sub { return $ledger4b->transfer(shift, 'Visa') } },
-    'Assets:Checking'  => { '' => sub { return $ledger4b->transfer(shift, 'Visa') } },
+    # CC side: tag='Visa' matches the 'Visa-500.00' ledgerCSV queue entry.
+    # Checking side: tag='Checking' matches the 'Checking-500.00' ledgerCSV
+    # queue entry.  setPosting then uses account-matching to update posting[0]
+    # (Assets:Checking) rather than always clobbering posting[1].
+    'Liabilities:Visa' => { '' => sub { return $ledger4b->transfer(shift, 'Visa')     } },
+    'Assets:Checking'  => { '' => sub { return $ledger4b->transfer(shift, 'Checking') } },
 };
 my $csv4b = {
     Visa     => { fields => [qw(date id payee quantity account)], csv_args => {} },
