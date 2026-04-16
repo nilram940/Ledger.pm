@@ -51,3 +51,16 @@
    statement is available.
    Automated downloading of statments would be nice but that is beyond the scope of this project.
 
+4. When adding transactions. 
+   a. the automation cleared a pending transaction and left it in place -- in the
+      pending section causing a imbalance as the balance transaction was above the pending section. 
+   b. the atomation processed a payment, it matched the manually entered uncleared transaction and replace
+      the checking split with the CC payment resulting in a double payment of sorts and an imbalance.
+
+
+5. Move the cached data .dat strorable files (desc.dat, etc) to yaml -- this will help with git.
+   Consider cleaning up desc -- It's currenlty a bit specific
+
+6. The Ledger datastructure caching is of dubious use. The general use-case is a single run so that ledger 
+   csv is only run once. This was added to facilitate the web frontend -- which no longer uses Ledger.pm.
+   Maybe add useCache to the constructor?

@@ -1,0 +1,152 @@
+#+TITLE: Ledger.pm Issues and Feature Requests
+#+TODO: TODO INVESTIGATING | FIXED DONE WONTFIX
+
+* Bugs
+
+** TODO Transfer matching                                               :bug:
+
+Transfers happen when two sides of a transaction are imported from different
+accounts (typically Asset and Liability).  Example of a complete transfer:
+
+#+begin_example
+2026/01/01  Credit Card Payment
+    Assets:Checking                      -$100   ;ID AC-12345
+    Liabilities:Credit Card                      ;ID CC-12345
+#+end_example
+
+When only one side has been imported, the other side should be parked under an
+Equity account until the second import arrives:
+
+#+begin_example
+2026/01/01  Credit Card Payment
+    Assets:Checking                      -$100   ;ID AC-12345
+    Equity:Transfers:Credit Card
+#+end_example
+
+*** TODO Asset/Liability postings added without IDs                    :bug:
+
+Multiple instances of ~^Assets~ or ~^Liabilities~ accounts being added without
+IDs.  This is incorrect in most cases and breaks transfer matching when the
+balancing transaction from the other account is processed.
+
+*** FIXED Split transfers merge correctly                              :bug:
+:LOGBOOK:
+- State "FIXED" from "TODO" [2026-04-16]
+:END:
+
+Two separate transactions were appearing where there should be one:
+
+#+begin_example
+2026/01/01  Credit Card Payment
+    Assets:Checking                      -$100   ;ID AC-12345
+    Equity:Transfers:Credit Card
+
+2026/01/01  Credit Card Payment
+    Equity:Transfers:Credit Card         -$100
+    Liabilities:Credit Card                      ;ID CC-12345
+#+end_example
+
+Fixed by the transfer queue matching in ~transfer()~ and the ~ledgerCSV~
+build_transfer path.  Covered by ~t/test_transfer.pl~ Scenario 1.
+
+** TODO Uncleared and pending transaction matching                     :bug:
+
+*** TODO Manually entered uncleared matching is unreliable             :bug:
+
+    - Sometimes the match does not happen at all.
+    - Other times the uncleared file is left with transactions where both
+      postings are ~Equity:~.
+
+*** FIXED Matched uncleared amount used instead of imported amount    :bug:
+:LOGBOOK:
+- State "FIXED" from "TODO" [2026-04-16]
+:END:
+
+When the match happened but amounts differed, the automation used the uncleared
+amount, causing balance errors.  The last posting's quantity was incorrectly
+blanked when ~$match == $last~.
+
+Fix: ~checkpending~ now only blanks the last posting quantity when
+~$match < $last~.  Covered by ~t/test_transfer.pl~ Scenario 3.
+
+*** FIXED Uncleared transfer: complete transaction added to cleared    :bug:
+:LOGBOOK:
+- State "FIXED" from "TODO" [2026-04-16]
+:END:
+
+When an uncleared transaction contained a transfer, the complete transaction
+(with both real accounts) was added to cleared rather than replacing the
+opposing side with ~Equity:Transfers:X~.
+
+Fix: ~checkpending~ now checks whether the non-matched posting is an
+Asset/Liability and, if so, correctly replaces the matched posting with
+~Equity:Transfers:~ rather than merging the whole transaction.
+Covered by ~t/test_transfer.pl~ Scenario 2.
+
+*** TODO Pending (Plaid) transactions do not clear                    :bug:
+
+The automation attempts to match by ID, but the upstream ID changes between
+the pending and posted state, leaving orphaned pending transactions in the
+file.
+
+Possible approaches:
+- On import, check whether parked pending transactions still exist in the new
+  export; delete or expire those that have been removed.
+- Try to match by date + amount to preserve any manual edits made since the
+  original import.
+
+** FIXED update_file posmap clobber — pending tx left in place        :bug:
+:LOGBOOK:
+- State "FIXED" from "TODO" [2026-04-16]
+:END:
+
+~getofxpos~ set ~ofxpos~ to the ~bpos~ of the first uncleared transaction.
+When that same transaction was matched by ~checkpending~, ~update_file~ did
+~posmap{ofxpos} = -1~, overwriting the in-place edit.  The pending bytes
+copied through and the appended transactions were written at ~ofxpos~ instead.
+
+Fix: changed ~=~ to ~//=~ so an existing edit entry is not overwritten.
+The ~@append~ list falls through to the end-of-file block when ~ofxpos~ is
+already claimed.  Covered by ~t/test_issue4.pl~ scenario 4a.
+
+** FIXED transfer() setPosting always used index 1                    :bug:
+:LOGBOOK:
+- State "FIXED" from "TODO" [2026-04-16]
+:END:
+
+~transfer()~ always called ~setPosting(1, ...)~ to complete a matched
+transaction.  When the incoming posting's account already existed at index 0
+(e.g. a Checking import updating a ~[Checking, Visa]~ transaction via the
+~Checking-N~ ledgerCSV queue entry), it replaced the wrong posting, causing a
+double Checking debit and an orphaned ~Equity:Transfers~ entry.
+
+Fix: scan postings for an account-name match; fall back to index 1 only when
+not found (preserving the ~Equity:Transfers~ placeholder case).
+Covered by ~t/test_issue4.pl~ scenario 4b.
+
+* Feature Requests
+
+** TODO PDF statement import                                       :feature:
+
+Import PDF bank statements and add/edit transactions.  Most useful for
+manually entered uncleared transactions where the statement balance needs to
+be updated when the statement arrives.
+
+Automated statement downloading is out of scope.
+
+** TODO Move Storable caches to YAML                               :feature:
+
+~desc.dat~ and similar Storable files are opaque to git.  Converting to YAML
+would make diffs readable and allow meaningful version control of the payee
+description cache.
+
+Also consider cleaning up ~desc~ — it is currently more specific than needed.
+
+** TODO Make object cache opt-in                                   :feature:
+
+The ~$file.store~ Storable cache (added to speed up the web frontend) is of
+dubious value for the normal single-run use case.  The web frontend no longer
+uses Ledger.pm at all.
+
+Consider adding a ~useCache => 1~ constructor parameter so callers opt in
+explicitly rather than getting caching by default.
