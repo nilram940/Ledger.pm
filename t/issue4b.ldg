@@ -26,8 +26,8 @@
     Expenses:Personal:Shopping                   $32.00
     Assets:Checking
 
-; Manually entered uncleared CC payment.
+; Manually entered uncleared CC payment (no state marker = uncleared, not pending).
 ; Expected after import: state=cleared, posting[1] gets ID from CC statement.
-2026/04/10 ! Visa Payment
+2026/04/10 Visa Payment
     Assets:Checking                            -$500.00
     Liabilities:Visa
