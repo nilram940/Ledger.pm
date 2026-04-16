@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# Reproduction script for issues 4a and 4b in issues.txt.
+# Reproduction script for issues 4a and 4b in issues.org.
 #
 # Issue 4a: A pending transaction that checkpending matches is left in the file
 #           because update_file overwrites posmap{ofxpos} with -1, losing the
