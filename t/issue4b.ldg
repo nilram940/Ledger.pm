@@ -1,0 +1,33 @@
+; Issue 4b reproduction: payment import causes imbalance
+;
+; The 4a bug (posmap[ofxpos]=-1 overwrite) is also at play here.
+;
+; What happens:
+;   1. CC import calls transfer('Visa'), finds the ledgerCSV 'Visa-500.00'
+;      queue entry from the uncleared transaction, consumes it, correctly
+;      sets Visa Payment to cleared with Visa ID — edit_pos=bpos of uncleared.
+;   2. Checking import calls transfer('Visa'), but 'Visa-500.00' was
+;      consumed; no match found.  Checking import is parked as a NEW
+;      append transaction [Checking ;ID, Equity:Transfers:Visa].
+;   3. In update_file: @append is non-empty → posmap{ofxpos=bpos}=-1
+;      overwrites the CC in-place edit.  The uncleared bytes copy through;
+;      the Checking append is written at ofxpos instead.
+;
+; Result: two Visa Payment entries in file — the orphaned Checking import
+; (Checking+Equity) and the original uncleared (Checking+Visa) — no Visa ID.
+;
+; Import order: issue4b-Visa.csv first, then issue4b-Checking.csv.
+
+2026/04/01 * Opening Balance
+    Assets:Checking                            $2000.00
+    Equity:Opening Balances
+
+2026/04/09 * Some Other Expense
+    Expenses:Personal:Shopping                   $32.00
+    Assets:Checking
+
+; Manually entered uncleared CC payment.
+; Expected after import: state=cleared, posting[1] gets ID from CC statement.
+2026/04/10 ! Visa Payment
+    Assets:Checking                            -$500.00
+    Liabilities:Visa

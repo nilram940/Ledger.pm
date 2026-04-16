@@ -1,0 +1,25 @@
+; Issue 4a reproduction: cleared pending transaction left in place
+;
+; Bug: getofxpos sets ofxpos = bpos of the first uncleared transaction.
+; When that same transaction is matched by checkpending, it lands in
+; posmap at key X. Then update_file does posmap{ofxpos}=-1, overwriting
+; the in-place edit. The old pending bytes copy through; appended
+; transactions land at position X instead of overwriting it.
+;
+; Reproduce: import issue4a.csv, which has one transaction matching
+; the pending below, plus one new unmatched transaction (causing @append).
+
+2026/04/01 * Opening Balance
+    Assets:Checking                            $2000.00
+    Equity:Opening Balances
+
+2026/04/03 * Coffee Shop
+    Expenses:Food:Dining                         $8.50
+    Assets:Checking
+
+; ---- PENDING ----
+; This is the FIRST uncleared transaction (lowest epos in the file).
+; getofxpos will set ofxpos = bpos of this transaction.
+2026/04/02 ! Grocery Store
+    Expenses:Food:Groceries                     $75.00
+    Assets:Checking                            -$75.00
