@@ -47,11 +47,12 @@ sub fromXMLstruct{
 sub toString{
     my $self=shift;
     my $bal=($self->{cost} && $self->{cost} eq 'BAL');
+    my $assert=($self->{cost} && $self->{cost} eq 'ASSERT');
     my $str=$bal?sprintf('     %-40s   = ','['.$self->{account}.']'):
 	sprintf('     %-40s   ',$self->{account});
     if (length($self->{quantity})){
 	if ($self->{commodity} eq '$'){
-	    $str.=sprintf('$%0.2f',$self->{quantity});
+	    $str.=($assert ? '= ' : '').sprintf('$%0.2f',$self->{quantity});
 	}else{
 	    my $commodity=$self->{commodity};
 	    $commodity = '"'.$commodity.'"' if $commodity =~/[^A-Z]/i;
