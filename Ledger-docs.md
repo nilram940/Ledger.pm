@@ -318,7 +318,7 @@ Represents a single line item within a transaction.
 | `account` | Full account name (e.g., `Assets:Checking:MyBank`) |
 | `quantity` | Numeric amount |
 | `commodity` | Currency or ticker symbol (default: `$`) |
-| `cost` | Total cost in `$` for non-dollar commodities; `'BAL'` for balance assertions |
+| `cost` | Total cost in `$` for non-dollar commodities; `'BAL'` for virtual balance assertions (`[account] = $X`); `'ASSERT'` for real-account balance assertions (`account   = $X`) |
 | `note` | Inline note/memo |
 
 ### Constructor
@@ -342,7 +342,8 @@ Extracts the ID tag value from the posting note. Returns `""` if no `ID: ...` no
 Serializes the posting to a Ledger-CLI posting line. Handles:
 - Dollar amounts: `$0.00` format
 - Commodity amounts: `N TICKER @@ $cost` format
-- Balance assertions: `= $0.00` format
+- Virtual balance assertions (`cost eq 'BAL'`): `[account]   = $0.00` format
+- Real-account balance assertions (`cost eq 'ASSERT'`): `account   = $0.00` format
 - Inline notes
 
 ---
@@ -473,14 +474,22 @@ If a transaction includes a `running_balance` field, it supersedes the account's
 
 ## Balance Assertions
 
-Balance assertions verify that an account's running total matches the bank's reported balance at a point in time. In Ledger-CLI format they look like:
+Balance assertions verify that an account's running total matches a known balance at a point in time. Two forms are used:
 
+**Virtual posting** (`cost => 'BAL'`) — used by `addStmtBal` for bank-reported balances:
 ```
 2026/02/02 * Checking Balance
      [Assets:Checking:MyBank Checking]        = $2500.00
 ```
+The bracketed account name makes this a virtual posting; Ledger-CLI asserts the balance without affecting other accounts.
 
-The bracketed account name and `=` syntax tell Ledger-CLI to assert the account's balance rather than post a transaction against it.
+**Real-account assertion** (`cost => 'ASSERT'`) — used for postings on real accounts where the balance should equal a known value after the transaction:
+```
+2026/02/02 * Electric Bill
+     Accounts Payable:Utilities:Electric      = $-85.00
+     Expenses:Utilities:Electric
+```
+No brackets; Ledger-CLI treats this as a normal posting whose amount is implied by the assertion target.
 
 ---
 
