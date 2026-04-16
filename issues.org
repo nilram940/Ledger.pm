@@ -145,6 +145,69 @@ Run ~scripts/convert-desc.pl~ once to migrate an existing ~desc.dat~.
 
 The ~desc~ cleanup (too-specific keys) remains a separate concern.
 
+** TODO Payee description cache: variable suffixes cause key explosion  :feature:
+
+Raw payee strings from bank statements contain variable suffixes that change
+per transaction, so ~desc.yaml~ accumulates a separate entry for each variant
+even when they all map to the same canonical name:
+
+#+begin_example
+AMAZON.COM*A1B2C3D4 AMZN.COM/BILL: Amazon
+AMAZON.COM*B5C6D7E8 AMZN.COM/BILL: Amazon
+SQ *BLUE BOTTLE 123456: Blue Bottle Coffee
+SQ *BLUE BOTTLE 789012: Blue Bottle Coffee
+#+end_example
+
+The cache grows unboundedly, edits are futile for the next random suffix, and
+there is no way to pre-populate it for new merchants.
+
+~desc~ serves two roles in ~addStmtTran~:
+1. Maps raw payee → canonical name used as a handler lookup key (line ~223~)
+2. Maps raw payee → canonical name used as the transaction payee (line ~234~)
+
+Both are exact hash lookups today.
+
+*** Proposed solution A: prefix wildcard keys
+
+Allow keys ending in ~*~ to match any payee beginning with that prefix.
+The user writes:
+
+#+begin_example
+AMAZON.COM*: Amazon
+SQ *: Square
+#+end_example
+
+A helper ~_desc_lookup($payee)~ does an exact lookup first, then scans for
+~*~-suffix keys:
+
+#+begin_src perl
+sub _desc_lookup {
+    my ($self, $payee) = @_;
+    return $self->{desc}{$payee} if exists $self->{desc}{$payee};
+    for my $key (grep { /\*$/ } keys %{$self->{desc}}) {
+        my $prefix = substr($key, 0, -1);
+        return $self->{desc}{$key} if index($payee, $prefix) == 0;
+    }
+    return undef;
+}
+#+end_src
+
+Replace the two ~$self->{desc}->{$payee}~ call sites with
+~$self->_desc_lookup($payee)~.
+
+Open questions:
+- Should a wildcard match write the exact key back into desc for O(1) future
+  lookups (cache warm-up), or keep the scan to avoid desc growth?
+- Should ~_desc_lookup~ also try ~$cleanpay~ (the ~***~-stripped form) before
+  the wildcard scan, or is prefix matching enough?
+
+*** Proposed solution B: normalize before lookup
+
+Strip the variable suffix from the raw payee before any desc lookup, reducing
+~AMAZON.COM*A1B2C3D4~ to ~AMAZON.COM*~ automatically.  This avoids user-facing
+wildcard syntax but requires a reliable normalization heuristic — difficult
+given how varied bank payee strings are in practice.
+
 ** TODO Make object cache opt-in                                   :feature:
 
 The ~$file.store~ Storable cache (added to speed up the web frontend) is of
