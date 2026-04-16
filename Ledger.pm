@@ -3,6 +3,7 @@ use strict;
 use warnings;
 use Fcntl qw(SEEK_SET SEEK_CUR SEEK_END);
 use Storable;
+use YAML::Tiny;
 use Ledger::Transaction;
 use Ledger::OFX;
 use Ledger::JSON;
@@ -30,7 +31,7 @@ sub new{
 	       balance=>{}};
     bless $self, $class;
     $self->{desc}=($args{payeetab} && (-f $args{payeetab}))
-	? retrieve($args{payeetab}):{};
+	? _read_payeetab($args{payeetab}):{};
     $self->{accounts}=$args{accounttab}?$self->getacctnum($args{accounttab}):{};
     $self->{id}={};
     $self->{payeetab}=$args{payeetab};
@@ -48,6 +49,13 @@ sub new{
     }
 
     return $self;
+}
+
+sub _read_payeetab {
+    my $file = shift;
+    my $yaml = eval { YAML::Tiny->read($file) };
+    return $yaml->[0] if $yaml && ref $yaml->[0] eq 'HASH';
+    return Storable::retrieve($file) // {};
 }
 
 sub getacctnum{
@@ -476,7 +484,7 @@ sub toString2{
     
 sub update{
     my $self=shift;
-    store ($self->{desc}, $self->{payeetab}) if $self->{payeetab};
+    YAML::Tiny->new($self->{desc})->write($self->{payeetab}) if $self->{payeetab};
     
     my @edit=(grep { $_->{edit} }
 	       @{$self->{transactions}});

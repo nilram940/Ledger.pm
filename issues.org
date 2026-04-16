@@ -134,13 +134,16 @@ be updated when the statement arrives.
 
 Automated statement downloading is out of scope.
 
-** TODO Move Storable caches to YAML                               :feature:
+** DONE Move Storable caches to YAML                               :feature:
+:LOGBOOK:
+- State "DONE" from "TODO" [2026-04-16]
+:END:
 
-~desc.dat~ and similar Storable files are opaque to git.  Converting to YAML
-would make diffs readable and allow meaningful version control of the payee
-description cache.
+~desc.dat~ converted to ~desc.yaml~ via ~YAML::Tiny~.  ~Ledger.pm~ reads YAML
+first, falls back to ~Storable~ for legacy files.  ~update()~ writes YAML.
+Run ~scripts/convert-desc.pl~ once to migrate an existing ~desc.dat~.
 
-Also consider cleaning up ~desc~ — it is currently more specific than needed.
+The ~desc~ cleanup (too-specific keys) remains a separate concern.
 
 ** TODO Make object cache opt-in                                   :feature:
 

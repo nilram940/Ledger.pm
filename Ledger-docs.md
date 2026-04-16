@@ -29,7 +29,7 @@ The `Ledger` module is a Perl-based personal accounting system that reads, parse
 ```perl
 my $ledger = Ledger->new(
     file       => '/path/to/ledger.dat',   # optional: existing ledger file
-    payeetab   => '/path/to/payees.stor',  # optional: Storable payee description cache
+    payeetab   => '/path/to/desc.yaml',    # optional: YAML payee description cache
     accounttab => '/path/to/accounts.txt', # optional: account number -> name mapping
     idtag      => 'ID',                    # optional: tag name for transaction IDs (default: 'ID')
 );
@@ -37,7 +37,7 @@ my $ledger = Ledger->new(
 
 On construction, the ledger checks for a Storable object cache at `$file.store`. If the cache is newer than `$file`, it is returned immediately (no subprocess, no parsing). Otherwise:
 
-1. Loads the payee description cache (via `Storable`)
+1. Loads the payee description cache (via `YAML::Tiny`; falls back to `Storable` for legacy `desc.dat` files)
 2. Loads the account number mapping table
 3. Runs `ledger csv` to populate transactions from the existing ledger file
 4. Builds a frequency table used for auto-categorization
@@ -172,7 +172,7 @@ Writes all modified transactions back to their source files. For each file:
 - Balance assertions are written alongside new transactions
 - A backup (`.bak`) is made before overwriting
 
-Also persists the payee description cache via `Storable`.
+Also persists the payee description cache via `YAML::Tiny`.
 
 ---
 
@@ -628,7 +628,7 @@ When a statement transaction matches an existing ID in `$ledger->{id}`, it is a 
 $ledger->{desc}{$raw_payee} = $canonical_payee;
 ```
 
-This means that on subsequent imports, previously seen raw payees are automatically mapped to their canonical names even without an explicit handler entry. The cache is persisted across runs via `Storable` when `update()` is called.
+This means that on subsequent imports, previously seen raw payees are automatically mapped to their canonical names even without an explicit handler entry. The cache is persisted across runs via `YAML::Tiny` when `update()` is called.
 
 ---
 
@@ -721,7 +721,7 @@ use Ledger;
 # Load existing ledger and payee cache
 my $ledger = Ledger->new(
     file       => 'personal.dat',
-    payeetab   => 'payees.stor',
+    payeetab   => 'desc.yaml',
     accounttab => 'accounts.txt',
 );
 
@@ -769,7 +769,8 @@ print $ledger->toString2();
 
 | Module | Purpose |
 |--------|---------|
-| `Storable` | Persist payee description cache |
+| `Storable` | Object cache (`$file.store`) and legacy `desc.dat` migration fallback |
+| `YAML::Tiny` | Persist payee description cache (`desc.yaml`) |
 | `Text::CSV` | Parse CSV files |
 | `Date::Parse` | Parse date strings to Unix timestamps |
 | `JSON` | Parse Plaid/Teller JSON exports |

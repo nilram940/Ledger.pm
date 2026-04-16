@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Dependencies
 
-Perl modules required: `Storable`, `Text::CSV`, `Date::Parse`, `JSON`, `XML::Parser`, `POSIX`, `Fcntl`
+Perl modules required: `Storable`, `YAML::Tiny`, `Text::CSV`, `Date::Parse`, `JSON`, `XML::Parser`, `POSIX`, `Fcntl`
 
 External tool: `ledger` CLI (used via subprocess in `Ledger::CSV::ledgerCSV` to populate transactions from an existing `.dat` file, unless a fresh Storable object cache exists)
 
@@ -36,7 +36,7 @@ There is no `Makefile`, test suite, or CI configuration. The library is used by 
 
 `fromStmt($filename, \%handlers, \%csv_config)` drives the import. The account name is inferred from the filename (prefix before the first `-`). Each parsed transaction is routed through `addStmtTran`, which:
 1. Deduplicates via ID cache (`makeid()` generates a stable key from account initials + FITID or date+amount)
-2. Looks up a handler (code ref or hashref with `payee`/`transfer` keys) by account+payee, falling back to the payee description cache (`Storable`-persisted)
+2. Looks up a handler (code ref or hashref with `payee`/`transfer` keys) by account+payee, falling back to the payee description cache (`YAML::Tiny`-persisted)
 3. Matches against existing uncleared transactions using `Transaction::balance()` — a scoring function based on date proximity, amount difference, payee similarity, check number, and pending ID
 4. Only accepts transactions within 90 days and after 2024-03-08
 
