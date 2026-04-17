@@ -209,12 +209,22 @@ Proposed methods on ~Ledger::Transaction~:
 ~checkpending~ and ~transfer~ inside the library should also be updated to use
 these methods rather than setting the fields directly.
 
-** TODO gentable / finddest reliability concerns                   :feature:
+** DONE gentable / finddest reliability concerns                   :feature:
+:LOGBOOK:
+- State "DONE" from "TODO" [2026-04-17]
+:END:
+
+Replaced the frequency-table approach with a proper Naive Bayes text
+classifier.  ~gentable~ now tokenises payee strings and builds per-source-account
+prior and token-likelihood tables; ~finddest~ computes log-probabilities with
+Laplace smoothing and returns a softmax confidence score.  Training data
+filtering and the confidence threshold are addressed as part of this change
+(see notes on each sub-issue below).
 
 ~gentable~ builds the frequency table used by ~finddest~ for auto-categorisation.
 Several aspects are questionable:
 
-*** Trains on all transactions without filtering
+*** FIXED Trains on all transactions without filtering
 
 Every transaction in the ledger contributes to the table, including:
 - Equity and transfer postings (~Equity:Transfers:X~, ~Equity:Opening Balances~)
@@ -232,14 +242,14 @@ The table should exclude:
 - Balance assertion transactions
 - Any posting whose note contains ~INFO:~
 
-*** ~getPosting(-1)~ as destination is unreliable
+*** TODO ~getPosting(-1)~ as destination is unreliable
 
 The destination account is taken from the *last* posting.  For a standard
 two-posting transaction this works, but for transactions with 3+ postings (or
 balance assertions attached) the last posting may not be the meaningful
 category.
 
-*** The bracket heuristic is approximate
+*** FIXED The bracket heuristic is approximate
 
 Amount magnitude is encoded as ~length(sprintf('%.2f', abs($amount)))~:
 
@@ -253,7 +263,7 @@ This creates cliff-edges: $9.99 and $10.00 land in different buckets despite
 being nearly the same amount.  It is a reasonable approximation but worth
 knowing about when debugging unexpected categorisation.
 
-*** The ~@@account default@@~ fallback truncates to two account levels
+*** FIXED The ~@@account default@@~ fallback truncates to two account levels
 
 When no payee match is found, ~gentable~ falls back to a bucket keyed on the
 first two account levels (~join(':', (split(/:/, $dest))[0,1])~), e.g.
@@ -261,7 +271,7 @@ first two account levels (~join(':', (split(/:/, $dest))[0,1])~), e.g.
 as a real ledger account, and the fallback wins even when the truncation loses
 meaningful specificity.
 
-*** No recency weighting
+*** TODO No recency weighting
 
 All historical transactions count equally.  If a payee's category is corrected,
 old training data continues to dilute the new signal until enough new

@@ -238,19 +238,50 @@ sub checkpending{
 }
 
 
-sub finddest{
-    my ($account,$amount,$desc,$table)=@_;
-    my $bracket=($amount<0?-1:1)*length(sprintf('%.2f',abs($amount)));
-    my $dcount=$table->{$account}->{$desc.'-'.$bracket}||
-	$table->{$account}->{'@@account default@@-'.$bracket};
-    my $dest=(sort {$dcount->{$b} <=> $dcount->{$a}} 
-	      grep (!/total/, keys %{$dcount}))[0];
+sub _tokenize {
+    my $payee = lc(shift // '');
+    return grep { /[a-z]/ } split(/[^a-z0-9]+/, $payee);
+}
 
-    my $prob=$dest?sprintf("%.2f",100*$dcount->{$dest}/$dcount->{total}):0;
-    if ($prob > 99.99999 && $dcount->{total}>12){
-	$prob=-$prob;
+sub finddest {
+    my ($account, $amount, $payee, $table) = @_;
+    my $src = $table->{$account} or return (undef, 0);
+    my $prior = $src->{prior}    or return (undef, 0);
+    my $total = $prior->{__total__} || 1;
+
+    my $bracket = ($amount < 0 ? 'neg' : 'pos') .
+                  length(sprintf('%.2f', abs($amount // 0)));
+    my @tokens = (_tokenize($payee), "__amt_$bracket");
+
+    my $vocab_size = $src->{vocab_size} || 1;
+
+    my %lp;
+    for my $cat (grep { $_ ne '__total__' } keys %$prior) {
+        my $tok_counts = $src->{tokens}{$cat} || {};
+        my $tok_total  = $tok_counts->{__total__} || 0;
+
+        $lp{$cat} = log($prior->{$cat} / $total);
+        for my $tok (@tokens) {
+            $lp{$cat} += log((($tok_counts->{$tok} || 0) + 1) /
+                             ($tok_total + $vocab_size));
+        }
     }
-    return ($dest,$prob);
+
+    return (undef, 0) unless %lp;
+
+    my ($best) = sort { $lp{$b} <=> $lp{$a} } keys %lp;
+
+    # Numerically stable softmax confidence
+    my $max = $lp{$best};
+    my $sum  = 0;
+    $sum += exp($lp{$_} - $max) for keys %lp;
+    my $conf = sprintf('%.2f', 100 / $sum);
+
+    # Negative signals high confidence (>= 90%, >= 3 training examples)
+    # Caller (balance()) adds an INFO: note when prob > 0
+    my $prob = ($conf >= 90 && $prior->{$best} >= 3) ? -$conf : $conf;
+
+    return ($best, $prob);
 }
 
 sub distance{

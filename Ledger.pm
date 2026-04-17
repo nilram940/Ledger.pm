@@ -425,29 +425,51 @@ sub getaccount{
 
     
 sub gentable {
-    my $self=shift;
-    my $table={};    
+    my $self = shift;
+    my $table = {};
 
-    foreach my $transaction ($self->getTransactions()){
-    	my $source=$transaction->getPosting(0)->{account};
-    	my $amount=$transaction->getPosting(0)->{quantity};
-    	my $bracket=($amount<0?-1:1)*length(sprintf('%.2f',abs($amount)));
-    	my $dest=$transaction->getPosting(-1)->{account};
-    	my $payee=$transaction->{payee}.'-'.$bracket;
-    	$table->{$source}||={};
-    	$table->{$source}->{$payee}||={total =>0 ,$dest => 0};
-    	$table->{$source}->{$payee}->{total}++;
-    	$table->{$source}->{$payee}->{$dest}++;
-	
-    	$payee='@@account default@@-'.$bracket;
-    	# #$bracket=($amount<0?-1:1);
-    	$dest=join(':',(split(/:/,$dest))[0,1]);
-    	$table->{$source}->{$payee}||={total =>0 ,$dest => 0};
-    	$table->{$source}->{$payee}->{total}++;
-    	$table->{$source}->{$payee}->{$dest}++;
+    foreach my $transaction ($self->getTransactions()) {
+        my $source = $transaction->getPosting(0)->{account};
+        my $amount = $transaction->getPosting(0)->{quantity} // 0;
+        my $dest_p = $transaction->getPosting(-1);
+        next unless $dest_p;
+        my $dest   = $dest_p->{account} // '';
+        my $note   = $dest_p->{note}    // '';
+
+        # Skip equity and transfer postings — not meaningful training signal
+        next if $dest =~ /^Equity:/;
+        # Skip balance assertion pseudo-postings
+        next if $dest_p->{cost} && $dest_p->{cost} eq 'BAL';
+        # Skip auto-categorised results — INFO: means the library was uncertain
+        next if $note =~ /INFO:/;
+
+        my @tokens = Ledger::Transaction::_tokenize($transaction->{payee});
+        # Encode amount magnitude as a feature token
+        my $bracket = ($amount < 0 ? 'neg' : 'pos') .
+                      length(sprintf('%.2f', abs($amount)));
+        push @tokens, "__amt_$bracket";
+
+        $table->{$source} ||= { prior => { __total__ => 0 },
+                                 tokens => {}, vocab => {} };
+        my $src = $table->{$source};
+
+        $src->{prior}{$dest}++;
+        $src->{prior}{__total__}++;
+
+        for my $tok (@tokens) {
+            $src->{tokens}{$dest}{$tok}++;
+            $src->{tokens}{$dest}{__total__}++;
+            $src->{vocab}{$tok} = 1;
+        }
     }
-    $self->{table}=$table;
-    return ($self);
+
+    # Precompute vocab size once for Laplace smoothing in finddest
+    for my $src (values %$table) {
+        $src->{vocab_size} = scalar keys %{$src->{vocab}};
+    }
+
+    $self->{table} = $table;
+    return $self;
 }
 
 sub toString{
