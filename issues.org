@@ -184,6 +184,42 @@ Covered by ~t/test_issue4.pl~ scenario 4b.
 
 * Feature Requests
 
+** TODO Add edit-scheduling methods to Transaction                 :feature:
+
+External callers that need to trigger an in-place rewrite of a transaction
+currently manipulate internal fields directly:
+
+#+begin_src perl
+$target->{edit}     = $target->{file};
+$target->{edit_pos} = $target->{bpos};
+$target->{edit_end} = $target->{epos};
+#+end_src
+
+This leaks the ~edit~/~edit_pos~/~edit_end~/~bpos~/~epos~ implementation detail
+into calling code and is easy to get wrong (e.g. forgetting ~edit_end~, or not
+calling ~findtext~ first when ~bpos~ is not yet set).
+
+Proposed methods on ~Ledger::Transaction~:
+
+| Method | Behaviour |
+|--------+-----------|
+| ~scheduleEdit()~ | Mark the transaction for in-place overwrite at its current file position.  Calls ~findtext~ if ~bpos~ is not yet set. |
+| ~scheduleAppend($file)~ | Mark for append at ~ofxpos~ in ~$file~ (~edit_pos = -1~). |
+
+~checkpending~ and ~transfer~ inside the library should also be updated to use
+these methods rather than setting the fields directly.
+
+** TODO Option to skip frequency-table construction                :feature:
+
+~Ledger->new~ always calls ~gentable()~, which scans all transactions to build
+the Bayesian auto-categorisation table.  When the library is loaded only for
+editing existing transactions (not importing new ones), this work is wasted.
+
+Proposed: a ~noClassify => 1~ constructor option that skips the ~gentable()~
+call.  Callers that only call ~update()~ on already-categorised transactions
+would see faster construction, particularly on large ledger files where
+~ledger csv~ is already the dominant cost.
+
 ** DONE Balance assertions in CSV importer                         :feature:
 :LOGBOOK:
 - State "DONE" from "TODO" [2026-04-17]
