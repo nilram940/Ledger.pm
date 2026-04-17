@@ -64,6 +64,31 @@ Solutions 1 and 3 are complementary and low-risk; solution 2 is the proper
 long-term fix for OFX but requires surfacing ~acctid~ from the OFX parser to
 ~fromStmt~.
 
+4. *Preprocessor with ~LEDGERNAME:~ injection* (preferred for OFX):
+   A standalone script reads the ~<ACCTID>~ from the OFX file, looks it up in a
+   mapping (YAML or same ~accounttab~ format), and injects a ~LEDGERNAME:~ line
+   into the OFX free-form header before Ledger.pm sees the file:
+
+   #+begin_example
+   OFXHEADER:100
+   DATA:OFXSGML
+   LEDGERNAME:Assets:Checking:MyBank
+   ...blank line...
+   <OFX>...
+   #+end_example
+
+   ~Ledger::OFX::parse~ already splits off the header block (everything before
+   the first ~<~) but currently discards it.  A one-line change reads
+   ~LEDGERNAME:~ from that block and passes it to the callback, which uses it
+   instead of the filename-derived prefix.
+
+   This approach mirrors the existing pattern in ~getplaid3.pl~, where the
+   downloader's ~override~ stanza injects ~ledger_name~ into the JSON before
+   writing to disk, so ~Ledger::JSON::Plaid~ finds it in the data without any
+   special-case logic in ~fromStmt~.  The preprocessor can be a standalone
+   script (one per institution, or a generic one driven by a YAML mapping) and
+   keeps the injection *outside* Ledger.pm entirely.
+
 ** TODO Constructor arguments are poorly integrated                     :bug:
 :PROPERTIES:
 :ID: BUG-001
