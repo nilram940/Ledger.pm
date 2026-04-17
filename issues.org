@@ -61,6 +61,31 @@ Two possible resolutions:
    the ~idtag~ constructor parameter, hardcode ~'ID'~ openly, and document the
    limitation.  This is simpler and honest about what the code actually does.
 
+** TODO Replace strdist with token-based recall in distance()          :bug:
+
+~distance()~ uses ~strdist~ to compare payees: it truncates the incoming
+statement payee to the length of the existing ledger payee and counts
+character mismatches.  This works when the bank string *starts with* the
+ledger name, but fails for intermediaries (Square, PayPal, etc.) where the
+merchant name does not appear at position 0:
+
+#+begin_example
+ledger: "Blue Bottle"          tokens: [blue, bottle]
+bank:   "SQ *BLUE BOTTLE 123"  tokens: [sq, blue, bottle]
+
+strdist: substr(bank, 0, 11) = "sq *blue bo"
+         vs "blue bottle" → 4 mismatches → distance ≈ 0.36  (wrong)
+
+token recall: [blue, bottle] ∩ [sq, blue, bottle] / 2 = 100%
+              → distance contribution 0  (correct)
+#+end_example
+
+Proposed fix: replace the ~strdist~ block in ~distance()~ with a token-recall
+score — the fraction of the ledger payee's tokens that appear in the statement
+payee's tokens.  A recall of 1.0 contributes 0 to ~$dist~; 0.0 contributes the
+same weight as the current maximum strdist penalty.  The ~_tokenize~ helper
+introduced for the Naive Bayes classifier is already available.
+
 ** TODO Transfer matching                                               :bug:
 
 Transfers happen when two sides of a transaction are imported from different
@@ -451,6 +476,36 @@ edge cases.
 - In-place file editing (reuse or replace ledger-web's ~updateFileEdit~)
 - Payee description cache (~desc.yaml~)
 - YAML config + JSON stdio handler protocol
+
+** TODO Replace desc.yaml and handler lookup with token-based matching :feature:
+
+~desc.yaml~ and the handler map both use exact raw payee strings as keys.
+This requires a separate entry per bank-string variant (see payee cache key
+explosion issue), and means handlers must enumerate every spelling a bank
+might use for a given merchant.
+
+A token-based lookup would treat the keys as sets of significant words
+rather than exact strings.  The lookup would tokenize the incoming raw
+payee (using ~_tokenize~), then find the handler or canonical name whose
+key tokens best overlap with the incoming tokens.
+
+#+begin_example
+handler key: "blue bottle"   → tokens: [blue, bottle]
+raw payee:   "SQ *BLUE BOTTLE 123456"  → tokens: [sq, blue, bottle]
+recall: 2/2 = 100%  → matched
+#+end_example
+
+This would subsume both proposed solutions to the key explosion problem
+(prefix wildcards and normalization heuristics) with a single, more
+principled mechanism.  The Naive Bayes classifier already builds a
+compatible token vocabulary; the handler lookup could reuse ~_tokenize~
+directly.
+
+Key open questions:
+- Threshold for a "match" (to avoid spurious overlaps on common words like
+  "market" or "coffee")
+- Whether to weight tokens by inverse frequency (rarer tokens count more)
+- How to handle ties between handler keys with equal recall
 
 ** TODO Make object cache opt-in                                   :feature:
 
