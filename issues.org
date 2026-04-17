@@ -219,11 +219,18 @@ Several aspects are questionable:
 Every transaction in the ledger contributes to the table, including:
 - Equity and transfer postings (~Equity:Transfers:X~, ~Equity:Opening Balances~)
 - Balance assertion pseudo-transactions
-- Pending/uncleared transactions that may have placeholder categories
-  (~Expenses:Miscellaneous~) from a previous failed match
+- Auto-categorised transactions the library was uncertain about
 
-These pollute the signal.  The table should probably be built only from
-cleared, non-transfer, non-equity transactions.
+These pollute the signal.  Note that pending/uncleared transactions should
+*not* be excluded wholesale — most are manually entered and are likely correct.
+The reliable signal is the posting note: postings with an ~INFO:~ tag were
+auto-categorised with low confidence and should be excluded; those without
+~INFO:~ were manually verified and are good training data.
+
+The table should exclude:
+- Equity and transfer account postings
+- Balance assertion transactions
+- Any posting whose note contains ~INFO:~
 
 *** ~getPosting(-1)~ as destination is unreliable
 
