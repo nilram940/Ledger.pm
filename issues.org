@@ -4,6 +4,9 @@
 * Bugs
 
 ** TODO Constructor arguments are poorly integrated                     :bug:
+:PROPERTIES:
+:ID: BUG-001
+:END:
 
 Several ~Ledger->new~ constructor arguments are accepted but not properly wired
 into the library's own logic.  Investigation needed to decide whether to fix
@@ -35,6 +38,9 @@ remove ~accounttab~ from the constructor and leave account resolution entirely t
 the caller.
 
 ** TODO idtag option is not consistently honoured                       :bug:
+:PROPERTIES:
+:ID: BUG-002
+:END:
 
 ~Ledger->new~ accepts an ~idtag~ constructor parameter (default ~'ID'~) that is
 meant to control which ledger tag stores transaction IDs.  The value is stored
@@ -62,6 +68,10 @@ Two possible resolutions:
    limitation.  This is simpler and honest about what the code actually does.
 
 ** TODO Replace strdist with token-based recall in distance()          :bug:
+:PROPERTIES:
+:ID: BUG-003
+:PRIORITY: high
+:END:
 
 ~distance()~ uses ~strdist~ to compare payees: it truncates the incoming
 statement payee to the length of the existing ledger payee and counts
@@ -87,6 +97,9 @@ same weight as the current maximum strdist penalty.  The ~_tokenize~ helper
 introduced for the Naive Bayes classifier is already available.
 
 ** TODO Transfer matching                                               :bug:
+:PROPERTIES:
+:ID: BUG-004
+:END:
 
 Transfers happen when two sides of a transaction are imported from different
 accounts (typically Asset and Liability).  Example of a complete transfer:
@@ -133,6 +146,9 @@ Fixed by the transfer queue matching in ~transfer()~ and the ~ledgerCSV~
 build_transfer path.  Covered by ~t/test_transfer.pl~ Scenario 1.
 
 ** TODO Uncleared and pending transaction matching                     :bug:
+:PROPERTIES:
+:ID: BUG-005
+:END:
 
 *** TODO Manually entered uncleared matching is unreliable             :bug:
 
@@ -179,6 +195,9 @@ Possible approaches:
   original import.
 
 ** FIXED update_file posmap clobber — pending tx left in place        :bug:
+:PROPERTIES:
+:ID: BUG-006
+:END:
 :LOGBOOK:
 - State "FIXED" from "TODO" [2026-04-16]
 :END:
@@ -193,6 +212,9 @@ The ~@append~ list falls through to the end-of-file block when ~ofxpos~ is
 already claimed.  Covered by ~t/test_issue4.pl~ scenario 4a.
 
 ** FIXED transfer() setPosting always used index 1                    :bug:
+:PROPERTIES:
+:ID: BUG-007
+:END:
 :LOGBOOK:
 - State "FIXED" from "TODO" [2026-04-16]
 :END:
@@ -208,6 +230,9 @@ not found (preserving the ~Equity:Transfers~ placeholder case).
 Covered by ~t/test_issue4.pl~ scenario 4b.
 
 ** FIXED Pending transactions are cleared in place          :bug:
+:PROPERTIES:
+:ID: BUG-008
+:END:
 :LOGBOOK:
 - State "FIXED" from "TODO" [2026-04-17]
 :END:
@@ -311,6 +336,9 @@ Covered by ~t/test_issue5.pl~.
 * Feature Requests
 
 ** TODO Add edit-scheduling methods to Transaction                 :feature:
+:PROPERTIES:
+:ID: FR-001
+:END:
 
 External callers that need to trigger an in-place rewrite of a transaction
 currently manipulate internal fields directly:
@@ -336,6 +364,9 @@ Proposed methods on ~Ledger::Transaction~:
 these methods rather than setting the fields directly.
 
 ** DONE gentable / finddest reliability concerns                   :feature:
+:PROPERTIES:
+:ID: FR-002
+:END:
 :LOGBOOK:
 - State "DONE" from "TODO" [2026-04-17]
 :END:
@@ -405,6 +436,9 @@ transactions accumulate to overcome it (~finddest~ requires >12 samples at
 >99.99% agreement for high-confidence results).
 
 ** TODO Option to skip frequency-table construction                :feature:
+:PROPERTIES:
+:ID: FR-003
+:END:
 
 ~Ledger->new~ always calls ~gentable()~, which scans all transactions to build
 the Bayesian auto-categorisation table.  When the library is loaded only for
@@ -416,6 +450,9 @@ would see faster construction, particularly on large ledger files where
 ~ledger csv~ is already the dominant cost.
 
 ** DONE Balance assertions in CSV importer                         :feature:
+:PROPERTIES:
+:ID: FR-004
+:END:
 :LOGBOOK:
 - State "DONE" from "TODO" [2026-04-17]
 :END:
@@ -439,6 +476,9 @@ possible to verify that the correct balance is written after a cleared
 transaction is moved to the cleared section.
 
 ** TODO PDF statement import                                       :feature:
+:PROPERTIES:
+:ID: FR-005
+:END:
 
 Import PDF bank statements and add/edit transactions.  Most useful for
 manually entered uncleared transactions where the statement balance needs to
@@ -447,6 +487,9 @@ be updated when the statement arrives.
 Automated statement downloading is out of scope.
 
 ** DONE Move Storable caches to YAML                               :feature:
+:PROPERTIES:
+:ID: FR-006
+:END:
 :LOGBOOK:
 - State "DONE" from "TODO" [2026-04-16]
 :END:
@@ -458,6 +501,9 @@ Run ~scripts/convert-desc.pl~ once to migrate an existing ~desc.dat~.
 The ~desc~ cleanup (too-specific keys) remains a separate concern.
 
 ** TODO Payee description cache: variable suffixes cause key explosion  :feature:
+:PROPERTIES:
+:ID: FR-007
+:END:
 
 Raw payee strings from bank statements contain variable suffixes that change
 per transaction, so ~desc.yaml~ accumulates a separate entry for each variant
@@ -521,6 +567,9 @@ wildcard syntax but requires a reliable normalization heuristic — difficult
 given how varied bank payee strings are in practice.
 
 ** TODO Port import pipeline to Go                                 :feature:
+:PROPERTIES:
+:ID: FR-008
+:END:
 
 *** Motivation
 
@@ -579,6 +628,10 @@ edge cases.
 - YAML config + JSON stdio handler protocol
 
 ** TODO Replace desc.yaml and handler lookup with token-based matching :feature:
+:PROPERTIES:
+:ID: FR-009
+:PRIORITY: high
+:END:
 
 ~desc.yaml~ and the handler map both use exact raw payee strings as keys.
 This requires a separate entry per bank-string variant (see payee cache key
@@ -609,6 +662,9 @@ Key open questions:
 - How to handle ties between handler keys with equal recall
 
 ** TODO Make object cache opt-in                                   :feature:
+:PROPERTIES:
+:ID: FR-010
+:END:
 
 The ~$file.store~ Storable cache (added to speed up the web frontend) is of
 dubious value for the normal single-run use case.  The web frontend no longer
