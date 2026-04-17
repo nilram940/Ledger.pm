@@ -246,13 +246,20 @@ given how varied bank payee strings are in practice.
   in-place editing (~updateFileEdit~).  A Go port would allow that logic to be
   shared rather than maintained in two places.
 
-*** Remaining hard dependency
+*** Remaining hard dependency and the real performance bottleneck
 
 Both the Perl and Go versions shell out to ~ledger csv~ to read existing
-transactions.  A Go port that retains this subprocess call is still not fully
-self-contained.  The alternative — implementing enough ledger-file parsing to
-replace ~ledger csv~ — is a large scope increase and is out of scope for this
-work item.
+transactions.  On a real ledger file this takes ~5 seconds (~44k output lines);
+everything the Perl library does on top of that is noise.  A Go port that
+retains the subprocess call would have the same baseline — the language change
+alone would not meaningfully improve speed.
+
+The only way to move that number is to replace ~ledger csv~ with a native
+ledger-file parser.  That is a substantially larger undertaking (transaction
+syntax, ~!include~, commodities, virtual accounts) and is out of scope for this
+work item.  The existing YAML object cache was added to avoid paying the
+~ledger csv~ cost on repeat runs, though it is of dubious value now that
+ledger-web no longer uses Ledger.pm.
 
 *** Handler strategy
 
