@@ -248,11 +248,14 @@ build_transfer path.  Covered by ~t/test_transfer.pl~ Scenario 1.
 :ID: BUG-005
 :END:
 
-*** TODO Manually entered uncleared matching is unreliable             :bug:
+*** INVESTIGATING Manually entered uncleared matching is unreliable    :bug:
 
     - Sometimes the match does not happen at all.
     - Other times the uncleared file is left with transactions where both
       postings are ~Equity:~.
+
+    Likely improved by BUG-003 token-based payee matching in ~distance()~.
+    Monitoring for recurrence.
 
 *** FIXED Matched uncleared amount used instead of imported amount    :bug:
 :LOGBOOK:
