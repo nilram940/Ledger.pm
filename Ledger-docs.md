@@ -372,14 +372,33 @@ In both cases the negated copy is stored so that `transfer()`'s matching conditi
 
 Parses a CSV statement file, calling `$callback->(\%transaction)` for each row.
 
-`%args` fields:
+`%args` keys:
 
 | Key | Description |
 |-----|-------------|
-| `fields` | Ordered array of field names matching CSV columns |
+| `fields` | Ordered array of field names mapping CSV columns to hash keys |
 | `csv_args` | Hashref passed to `Text::CSV->new` |
-| `reverse` | If true, negates the quantity |
-| `process` | Optional coderef for per-row post-processing |
+| `reverse` | If true, negates the quantity (ignored for balance assertions) |
+| `process` | Optional coderef called on each row hashref before the main callback |
+
+**Recognised field names** (others are passed through unchanged):
+
+| Field | Processing |
+|-------|------------|
+| `date` | Parsed via `str2time`; rows with no valid date are skipped |
+| `quantity` | `=` prefix → balance assertion (sets `cost='BAL'`, strips `=`); everything up to and including the last `$` is stripped |
+| `payee` | Leading whitespace and `~.*` suffix stripped |
+| `account` | Passed through as-is |
+| `commodity` | Optional; `Posting::new` defaults to `$` when absent |
+| `cost` | Set automatically to `'BAL'` for `=`-prefixed quantities; otherwise passed through |
+
+**Balance assertions**: a quantity beginning with `=` (e.g. `= $95.00` or `=95.00`)
+is treated as a balance assertion and routed to `addStmtBal` by the `fromStmt`
+callback.  No extra column is needed.
+
+```
+2026/02/04,,Checking Balance,= $65.00,Assets:Checking
+```
 
 ---
 

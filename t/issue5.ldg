@@ -1,0 +1,20 @@
+; Issue 5: pending transaction cleared in-place instead of moved
+;
+; When a pending transaction that is NOT at ofxpos is matched and cleared,
+; it should be removed from the pending section and appended at ofxpos.
+; Bug: edit_pos was set to bpos, so it was cleared in-place, leaving it
+; below other pending transactions.
+
+2026/02/02 * Coffee Shop
+    Assets:Checking                 -$5.00  ; ID: CHK-000
+    Expenses:Dining
+
+; ---- PENDING ----
+; ofxpos will be set to the bpos of KFC (first pending).
+2026/02/01 ! KFC
+    Assets:Checking                -$15.00  ; ID: CHK-001
+    Expenses:Dining
+
+2026/02/04 ! Wal-Mart
+    Assets:Checking                -$30.00  ; ID: CHK-002
+    Expenses:Clothes

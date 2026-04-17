@@ -26,9 +26,10 @@ sub parsefile{
 	next unless $csv{date};
 	$csv{date}=str2time($csv{date});
 	next unless $csv{date};
+	$csv{cost}='BAL' if $csv{quantity}=~s/^\s*=\s*//;
 	$csv{quantity}=~s/^.*\$//;
 	#next unless $csv{quantity}=~/^\d/;
-	$csv{quantity}=-$csv{quantity} if $args->{reverse};
+	$csv{quantity}=-$csv{quantity} if $args->{reverse} && !$csv{cost};
 	$csv{payee}=~s/^\s*//;
 	$csv{payee}=~s/~.*$//;
         &{$args->{process}}(\%csv) if $args->{process};

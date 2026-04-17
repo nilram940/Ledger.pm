@@ -196,8 +196,9 @@ sub checkpending{
 	    return 1;
 	}
     }
+    my $orig_state=$candidate->{state};
     $candidate->{state}=$self->{state};
-    $candidate->{'aux-date'}=$candidate->{date} 
+    $candidate->{'aux-date'}=$candidate->{date}
            unless ($candidate->{'aux-date'} || ($candidate->{date} == $self->{date}));
     $candidate->{date}=$self->{date};
     if ($self->{file}){
@@ -207,11 +208,18 @@ sub checkpending{
 	$candidate->{edit_pos}=$self->{bpos};
 	$candidate->{edit_end}=$self->{epos};
     }elsif($candidate->{file}){
-	# New import (no file) matched an existing uncleared — overwrite it in the ledger
 	$candidate->{edit}=$candidate->{file};
-	# edit_pos=0 triggers findtext in update() when bpos not yet set
-	$candidate->{edit_pos}=$candidate->{bpos}||0;
-	$candidate->{edit_end}=$candidate->{epos};
+	if ($orig_state ne 'cleared' && $candidate->{state} eq 'cleared'){
+	    # Pending → cleared: delete from pending position, append at ofxpos
+	    # bpos in posmap causes update_file to skip the original bytes;
+	    # edit_pos=-1 puts the transaction in @append for insertion at ofxpos.
+	    $candidate->{edit_pos}=-1;
+	}else{
+	    # New import matched an existing uncleared — overwrite in the ledger
+	    # edit_pos=0 triggers findtext in update() when bpos not yet set
+	    $candidate->{edit_pos}=$candidate->{bpos}||0;
+	    $candidate->{edit_end}=$candidate->{epos};
+	}
     }else{
 	$candidate->{edit}=$self->{edit}||$self->{file};
 	$candidate->{edit_pos}=-1;

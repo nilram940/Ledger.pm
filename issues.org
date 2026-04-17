@@ -126,6 +126,29 @@ Covered by ~t/test_issue4.pl~ scenario 4b.
 
 * Feature Requests
 
+** DONE Balance assertions in CSV importer                         :feature:
+:LOGBOOK:
+- State "DONE" from "TODO" [2026-04-17]
+:END:
+
+The CSV importer does not support balance assertions.  The ~fromStmt~ callback
+already routes rows with ~cost eq 'BAL'~ to ~addStmtBal~, so the only missing
+piece is ~parsefile~ emitting such rows.
+
+Proposed: treat a ~=~ prefix on the quantity column as a balance assertion,
+mirroring ledger's own syntax.  A test fixture row would look like:
+
+#+begin_example
+2026/02/02,,Checking Balance,=95.00,Assets:Checking
+#+end_example
+
+~parsefile~ detects the ~=~ before the existing ~$~-strip and sets ~cost='BAL'~.
+No extra field or column needed; the meaning is self-describing in the CSV.
+
+Primary motivation: enables balance assertions in CSV test fixtures, making it
+possible to verify that the correct balance is written after a cleared
+transaction is moved to the cleared section.
+
 ** TODO PDF statement import                                       :feature:
 
 Import PDF bank statements and add/edit transactions.  Most useful for
@@ -216,3 +239,105 @@ uses Ledger.pm at all.
 
 Consider adding a ~useCache => 1~ constructor parameter so callers opt in
 explicitly rather than getting caching by default.
+
+
+** FIXED Pending transactions are cleared in place          :bug:
+:LOGBOOK:
+- State "FIXED" from "TODO" [2026-04-17]
+:END:
+
+When I have a transaction file that looks like this:
+
+#+begin_example
+
+2026/01/15 * Opening Balance
+    Assets:Checking                $100.00
+    Equity:Opening Balances
+
+2026/02/02  * Coffee Shop
+    Assets:Checking                -$5.00  ;ID: CHK-001
+    Expenses:Dining
+
+2026/02/02  * Checking Balance
+     [Assets:Checking]              = $95.00
+    
+2026/02/01 !  KFC
+    Assets:Checking                -$15.00  ;ID: CHK!-002
+    Expenses:Dining
+
+
+2026/02/04 ! Wal-Mart
+    Assets:Checking                -$30.00  ;ID: CHK!-003
+    Expenses:Clothes
+
+ #+end_example
+
+And I import a plaid file that clears the Wal-Mart transaction,
+CHK-003, the transaction is cleared in place rather than moved above
+the other pending transactions. That is I get this:
+
+#+begin_example
+
+2026/01/15 * Opening Balance
+    Assets:Checking                $100.00
+    Equity:Opening Balances
+
+2026/02/02  * Coffee Shop
+    Assets:Checking                -$5.00  ;ID: CHK-001
+    Expenses:Dining
+
+2026/02/02  * Checking Balance
+     [Assets:Checking]              = $95.00
+
+2026/02/04  * Checking Balance
+     [Assets:Checking]              = $65.00
+
+2026/02/01 !  KFC
+    Assets:Checking                -$15.00  ;ID: CHK!-002
+    Expenses:Dining
+
+
+2026/02/04 * Wal-Mart
+    Assets:Checking                -$30.00  ;ID: CHK-003
+    Expenses:Clothes
+
+ #+end_example
+
+ I should get this:
+ #+begin_example
+
+2026/01/15 * Opening Balance
+    Assets:Checking                $100.00
+    Equity:Opening Balances
+
+2026/02/02  * Coffee Shop
+    Assets:Checking                -$5.00  ;ID: CHK-001
+    Expenses:Dining
+
+2026/02/02  * Checking Balance
+     [Assets:Checking]              = $95.00
+
+2026/02/04 * Wal-Mart
+    Assets:Checking                -$30.00  ;ID: CHK-003
+    Expenses:Clothes
+
+2026/02/04  * Checking Balance
+     [Assets:Checking]              = $65.00
+
+2026/02/01 !  KFC
+    Assets:Checking                -$15.00  ;ID: CHK!-002
+    Expenses:Dining
+
+
+
+ #+end_example
+
+ I think this is a bug that was introduced with other fixes.
+
+Fix: ~checkpending~ now saves the original candidate state before overwriting
+it.  In the ~elsif($candidate->{file})~ branch, when the original state was not
+~cleared~ and the new state is ~cleared~, ~edit_pos~ is set to ~-1~ instead of
+~bpos~.  This puts the transaction in ~@append~ (inserted at ~ofxpos~) while the
+existing ~bpos~ entry in ~posmap~ causes ~update_file~ to skip the original bytes,
+effectively deleting the transaction from its pending position.
+Covered by ~t/test_issue5.pl~.
