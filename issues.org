@@ -209,6 +209,58 @@ Proposed methods on ~Ledger::Transaction~:
 ~checkpending~ and ~transfer~ inside the library should also be updated to use
 these methods rather than setting the fields directly.
 
+** TODO gentable / finddest reliability concerns                   :feature:
+
+~gentable~ builds the frequency table used by ~finddest~ for auto-categorisation.
+Several aspects are questionable:
+
+*** Trains on all transactions without filtering
+
+Every transaction in the ledger contributes to the table, including:
+- Equity and transfer postings (~Equity:Transfers:X~, ~Equity:Opening Balances~)
+- Balance assertion pseudo-transactions
+- Pending/uncleared transactions that may have placeholder categories
+  (~Expenses:Miscellaneous~) from a previous failed match
+
+These pollute the signal.  The table should probably be built only from
+cleared, non-transfer, non-equity transactions.
+
+*** ~getPosting(-1)~ as destination is unreliable
+
+The destination account is taken from the *last* posting.  For a standard
+two-posting transaction this works, but for transactions with 3+ postings (or
+balance assertions attached) the last posting may not be the meaningful
+category.
+
+*** The bracket heuristic is approximate
+
+Amount magnitude is encoded as ~length(sprintf('%.2f', abs($amount)))~:
+
+| Amount range | Bracket |
+|--------------+---------|
+| $1.00–$9.99  |       4 |
+| $10.00–$99.99|       5 |
+| $100–$999.99 |       6 |
+
+This creates cliff-edges: $9.99 and $10.00 land in different buckets despite
+being nearly the same amount.  It is a reasonable approximation but worth
+knowing about when debugging unexpected categorisation.
+
+*** The ~@@account default@@~ fallback truncates to two account levels
+
+When no payee match is found, ~gentable~ falls back to a bucket keyed on the
+first two account levels (~join(':', (split(/:/, $dest))[0,1])~), e.g.
+~Expenses:Food:Dining~ → ~Expenses:Food~.  This truncated account may not exist
+as a real ledger account, and the fallback wins even when the truncation loses
+meaningful specificity.
+
+*** No recency weighting
+
+All historical transactions count equally.  If a payee's category is corrected,
+old training data continues to dilute the new signal until enough new
+transactions accumulate to overcome it (~finddest~ requires >12 samples at
+>99.99% agreement for high-confidence results).
+
 ** TODO Option to skip frequency-table construction                :feature:
 
 ~Ledger->new~ always calls ~gentable()~, which scans all transactions to build
