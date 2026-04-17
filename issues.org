@@ -3,6 +3,33 @@
 
 * Bugs
 
+** TODO idtag option is not consistently honoured                       :bug:
+
+~Ledger->new~ accepts an ~idtag~ constructor parameter (default ~'ID'~) that is
+meant to control which ledger tag stores transaction IDs.  The value is stored
+in ~$self->{idtag}~ but is never read back; all of the following sites
+hardcode the string ~ID:~ instead:
+
+| File | Line | Hardcoded use |
+|------+------+---------------|
+| ~Ledger.pm~ | 244 | ~"ID: $key"~ — posting note written in ~addStmtTran~ |
+| ~Ledger/Posting.pm~ | 30 | ~/ID:\s*(\S+)/~ — ~getid()~ regex |
+| ~Ledger/XML.pm~ | 140 | ~/^\s*ID:\s*(\S+)/~ — XML import ID extraction |
+| ~Ledger/CSV.pm~ | 110 | ~$csv{note}!~/ID:/~ — transfer detection heuristic |
+
+Two possible resolutions:
+
+1. *Thread the tag through*: pass ~$idtag~ (or a compiled regex) to each site.
+   ~getid~ in ~Posting.pm~ is the most impactful since it drives ~distance()~
+   ID-based matching.  The ~Ledger~ object is not in scope in ~Posting~ or ~CSV~,
+   so the tag would need to be passed explicitly or stored on each posting at
+   construction time.
+
+2. *Remove the option*: ~'ID'~ appears to be the only tag in use in practice.
+   If no caller has ever needed a different tag, the right fix may be to delete
+   the ~idtag~ constructor parameter, hardcode ~'ID'~ openly, and document the
+   limitation.  This is simpler and honest about what the code actually does.
+
 ** TODO Transfer matching                                               :bug:
 
 Transfers happen when two sides of a transaction are imported from different
