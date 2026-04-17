@@ -231,6 +231,57 @@ Strip the variable suffix from the raw payee before any desc lookup, reducing
 wildcard syntax but requires a reliable normalization heuristic — difficult
 given how varied bank payee strings are in practice.
 
+** TODO Port import pipeline to Go                                 :feature:
+
+*** Motivation
+
+- *Single binary distribution*: the Perl library requires ~Text::CSV~,
+  ~Date::Parse~, ~JSON~, ~XML::Parser~, and ~YAML::Tiny~ — all stable and
+  available in OS package managers, but still friction on a new machine.  A Go
+  binary has no runtime dependencies beyond the ~ledger~ CLI itself.
+- *Speed*: Go's compiled execution and native concurrency would make the import
+  pipeline meaningfully faster, particularly for large statement files or bulk
+  imports across many accounts.
+- *Unification*: ledger-web already re-implements byte-position tracking and
+  in-place editing (~updateFileEdit~).  A Go port would allow that logic to be
+  shared rather than maintained in two places.
+
+*** Remaining hard dependency
+
+Both the Perl and Go versions shell out to ~ledger csv~ to read existing
+transactions.  A Go port that retains this subprocess call is still not fully
+self-contained.  The alternative — implementing enough ledger-file parsing to
+replace ~ledger csv~ — is a large scope increase and is out of scope for this
+work item.
+
+*** Handler strategy
+
+Perl handlers are code refs defined inline in per-user import scripts, giving
+full scripting flexibility.  In a compiled Go binary, the equivalent options
+are:
+
+1. *YAML/TOML config* for the common case: ~payee → account~ mappings and
+   transfer routing rules.  Covers ~80%+ of real-world handlers.
+
+2. *External handler scripts via JSON stdio* for custom logic: the binary
+   serialises each unmatched transaction to JSON, pipes it to a user-supplied
+   script (any language), and reads back the modified transaction.  Simple
+   cases can be handled in a shell script; complex cases in whatever language
+   the user prefers.  No embedded interpreter needed.
+
+The recommended approach is to combine both: YAML config as the primary
+interface, with an optional ~--handler~ flag pointing to an executable for
+edge cases.
+
+*** Scope
+
+- OFX, CSV, and JSON (Plaid/Teller) parsers
+- Heuristic matching (~distance~, ~checkpending~, ~balance~)
+- Transfer matching
+- In-place file editing (reuse or replace ledger-web's ~updateFileEdit~)
+- Payee description cache (~desc.yaml~)
+- YAML config + JSON stdio handler protocol
+
 ** TODO Make object cache opt-in                                   :feature:
 
 The ~$file.store~ Storable cache (added to speed up the web frontend) is of
