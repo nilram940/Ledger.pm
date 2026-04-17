@@ -3,6 +3,67 @@
 
 * Bugs
 
+** TODO Account identification via filename is fragile              :bug:
+:PROPERTIES:
+:ID: BUG-009
+:END:
+
+Both importers derive the account name from the statement filename:
+~fromStmt~ strips the path, strips everything from the first ~-~, and strips
+the extension:
+
+#+begin_src perl
+$account =~ s/-.*//;   # "Checking-2026-03.csv" → "Checking"
+#+end_src
+
+This string is then used as:
+1. A key into the ~%handlers~ map to find the right callback
+2. A key into the ~%csv~ config map to find field layout
+3. The default account name passed to ~addStmtTran~ / ~addStmtBal~
+
+This means filenames must follow an exact convention, and the short prefix
+(e.g. ~Checking~) is used as both a config key and a ledger account name,
+conflating two distinct concepts.
+
+*** What the importers already know
+
+- *OFX*: ~<ACCTID>~ and ~<BANKID>~ are parsed into ~$data->{acctid}~ by the
+  ~acctid~ handler but are never surfaced to the callback or used for routing.
+  The file contains the authoritative account identity.
+- *CSV*: Account may appear as a field in the row (~account~ in ~fields~), but
+  the config-dispatch key and the default account both still come from the
+  filename.
+- *Plaid/Teller JSON*: Structured account objects with IDs are available.
+
+*** Prior attempt
+
+~accounttab~ was intended to map 4-digit account-number suffixes to full
+ledger account names, but ~getaccount~ was never wired into ~fromStmt~ and
+remains a standalone function callers must invoke manually (see BUG-001).
+
+*** Proposed solutions
+
+1. *Explicit account in CSV config*: add an ~account~ key to the per-source
+   config hashref.  The filename prefix remains the config dispatch key but is
+   no longer used as the ledger account name:
+   #+begin_src perl
+   Checking => { account => 'Assets:Checking:MyBank',
+                 fields  => [qw(date id payee quantity)] }
+   #+end_src
+
+2. *OFX routing table*: a YAML config mapping ~BANKID:ACCTID~ → full ledger
+   account name.  ~fromStmt~ passes the parsed ~acctid~ to a lookup function
+   instead of using the filename.  Subsumes ~accounttab~ with a working
+   implementation.
+
+3. *Explicit ~account~ parameter to ~fromStmt~*: simplest possible fix — let
+   the caller pass the account name directly and use the filename only as a
+   config-dispatch key.
+
+Solutions 1 and 3 are complementary and low-risk; solution 2 is the proper
+long-term fix for OFX but requires surfacing ~acctid~ from the OFX parser to
+~fromStmt~.
+
 ** TODO Constructor arguments are poorly integrated                     :bug:
 :PROPERTIES:
 :ID: BUG-001
