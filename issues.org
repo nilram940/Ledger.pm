@@ -586,10 +586,17 @@ Run ~scripts/convert-desc.pl~ once to migrate an existing ~desc.dat~.
 
 The ~desc~ cleanup (too-specific keys) remains a separate concern.
 
-** TODO Payee description cache: variable suffixes cause key explosion  :feature:
+** DONE Payee description cache: variable suffixes cause key explosion  :feature:
 :PROPERTIES:
 :ID: FR-007
 :END:
+
+Resolved by FR-009 (~_token_lookup~).  A desc key of ~"blue bottle"~ now matches
+~"SQ *BLUE BOTTLE 123456"~ via token overlap — no wildcard syntax or
+normalization heuristic required.  The cache may still accumulate exact-match
+entries on first sight, but ~_token_lookup~ makes them unnecessary going forward.
+
+
 
 Raw payee strings from bank statements contain variable suffixes that change
 per transaction, so ~desc.yaml~ accumulates a separate entry for each variant
