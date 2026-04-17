@@ -205,11 +205,23 @@ Equity account until the second import arrives:
     Equity:Transfers:Credit Card
 #+end_example
 
-*** TODO Asset/Liability postings added without IDs                    :bug:
+*** INVESTIGATING Asset/Liability postings added without IDs           :bug:
 
 Multiple instances of ~^Assets~ or ~^Liabilities~ accounts being added without
 IDs.  This is incorrect in most cases and breaks transfer matching when the
 balancing transaction from the other account is processed.
+
+Cross-run transfer matching analysis (2026-04-17):
+
+~ledgerCSV~ repopulates ~$self->{transfer}~ at construction time by scanning
+for ~Equity:Transfers:~ postings in the ledger, so the queue is available to
+the second import even in a separate run.  The tag key is designed to be the
+receiving/credit account (e.g. "Visa" for a credit card payment), which should
+be consistent across both sides when quantities have the expected signs.
+
+The two-stub symptom may already be resolved by the ~ledgerCSV~ queue rebuild.
+Plaid is the primary source for these accounts so ~reverse~ sign issues are
+unlikely.  Monitoring for recurrence.
 
 *** FIXED Split transfers merge correctly                              :bug:
 :LOGBOOK:
