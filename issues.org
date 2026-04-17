@@ -128,7 +128,7 @@ Two possible resolutions:
    the ~idtag~ constructor parameter, hardcode ~'ID'~ openly, and document the
    limitation.  This is simpler and honest about what the code actually does.
 
-** TODO Replace strdist with token-based recall in distance()          :bug:
+** DONE Replace strdist with token-based recall in distance()          :bug:
 :PROPERTIES:
 :ID: BUG-003
 :PRIORITY: high
@@ -688,7 +688,7 @@ edge cases.
 - Payee description cache (~desc.yaml~)
 - YAML config + JSON stdio handler protocol
 
-** TODO Replace desc.yaml and handler lookup with token-based matching :feature:
+** DONE Replace desc.yaml and handler lookup with token-based matching :feature:
 :PROPERTIES:
 :ID: FR-009
 :PRIORITY: high

@@ -219,19 +219,21 @@ sub addStmtTran{
     my $cleanpay=$payee;
     $cleanpay=~s/\s+\*{3}.*$//;
         
-    my $handler=$handlers->{$account}->{$payee}||
-	$handlers->{$account}->{$self->{desc}->{$payee}||""}||
-        $handlers->{$account}->{$cleanpay};
-    
-    unless ($handler){
-	my $key=(split(/\s+/,$payee))[0];
-	$handler=$handlers->{$account}->{$key}||'';
-    }
-	
+    my $acct_handlers = $handlers->{$account} || {};
+    my $acct_desc     = $self->{desc}         || {};
+
+    my $handler = $acct_handlers->{$payee}
+               || $acct_handlers->{$acct_desc->{$payee} || ""}
+               || $acct_handlers->{$cleanpay}
+               || _token_lookup($acct_handlers, $payee);
+
     if ($handler && ref ($handler) eq 'HASH'){
-	$payee=$handler->{payee}; 
-    }elsif ($self->{desc}->{$payee}){
-	$payee=$self->{desc}->{$payee};
+	$payee=$handler->{payee};
+    } elsif ($acct_desc->{$payee}) {
+	$payee=$acct_desc->{$payee};
+    } else {
+        my $desc_payee = _token_lookup($acct_desc, $payee);
+        $payee = $desc_payee if $desc_payee;
     }
     my $transaction=new Ledger::Transaction 
 	($stmttrn->{date}, $stmttrn->{state} || "cleared", $stmttrn->{number}, 
@@ -470,6 +472,28 @@ sub gentable {
 
     $self->{table} = $table;
     return $self;
+}
+
+sub _token_lookup {
+    my ($map, $payee) = @_;
+    my @tokens = Ledger::Transaction::_tokenize($payee);
+    return undef unless @tokens;
+
+    my $best_val;
+    my $best_len = 0;
+    for my $key (keys %$map) {
+        my @key_toks = Ledger::Transaction::_tokenize($key);
+        next unless @key_toks;
+        # All key tokens must appear in the payee tokens
+        my %pay_toks = map { $_ => 1 } @tokens;
+        next if grep { !$pay_toks{$_} } @key_toks;
+        # Prefer the most-specific (longest-key-token) match
+        if (scalar(@key_toks) > $best_len) {
+            $best_len = scalar(@key_toks);
+            $best_val = $map->{$key};
+        }
+    }
+    return $best_val;
 }
 
 sub toString{

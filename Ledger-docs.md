@@ -96,9 +96,12 @@ Each transaction in the file is passed to either `addStmtBal` (for balance recor
 Processes a single imported transaction. Key behaviors:
 
 - Deduplicates via the transaction ID cache (`$self->{id}`)
-- Looks up a handler by account + payee, falling back to the payee description cache
+- Looks up a handler by account + payee using a cascading strategy: exact payee → desc cache → cleaned payee → token-based fallback (`_token_lookup`)
+- Resolves the canonical payee name via desc cache or token-based desc lookup when no handler matched
 - Attempts to match against existing uncleared transactions using `Transaction::balance`
 - Only adds transactions dated within the last 90 days (and after 2024-03-08)
+
+**Token-based lookup** (`_token_lookup`): tokenizes both the incoming payee and each handler/desc key, then finds the key whose tokens are all present in the payee tokens, preferring the most specific (most-token) match. This handles intermediary prefixes like `SQ *` or `PAYPAL *` transparently — a handler keyed on `"blue bottle"` matches `"SQ *BLUE BOTTLE 123456"` without needing a separate entry.
 
 **Handlers** can be:
 - A code reference: `sub { my $t = shift; ... return $t }`
@@ -301,7 +304,7 @@ Finds the best-matching uncleared/pending transaction from `@pending_transaction
 Computes a heuristic match score between two transactions. Lower is better; scores below 1.0 are considered matches. The score combines:
 - Date proximity (5-day half-weight window)
 - Amount difference (10x weight)
-- Payee string similarity (custom character-distance function)
+- Payee token recall: fraction of ledger payee tokens found in statement payee tokens (1 - recall contributes to distance; works correctly for intermediary prefixes like "SQ *" or "PAYPAL *")
 - Check number equality (gold standard: returns 0 immediately on match)
 - Pending ID match (returns 0 immediately on match)
 

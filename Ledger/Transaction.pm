@@ -327,34 +327,17 @@ sub distance{
     }
     $dist+=$subdist*$subdist;
 
-    my $len=length($comp->{payee});
-    my $payee=lc(substr $self->{payee},0,$len);
-    #print STDERR $payee."\n";
-    #$subdist=Text::Levenshtein::distance($payee,lc($comp->{payee}));
-    $subdist=strdist($payee,lc($comp->{payee}));
-    $subdist=$subdist/$len;
-    $dist+=$subdist*$subdist;
-				
-    return sqrt($dist), $num;
-}
-sub strdist{
-    my ($str1, $str2)=@_;
-    my $str1len=length($str1);
-    my $str2len=length($str2);
-    my $dist=($str1len-$str2len);
-    my $stop=$str2len;
-    
-    if ($dist<0){
-	$dist=-$dist;
-	$stop=$str1len;
+    my @comp_tokens = _tokenize($comp->{payee});
+    if (@comp_tokens) {
+        my %self_toks = map { $_ => 1 } _tokenize($self->{payee});
+        my $matches = grep { $self_toks{$_} } @comp_tokens;
+        $subdist = 1 - $matches / scalar(@comp_tokens);
+    } else {
+        $subdist = 0;
     }
+    $dist += $subdist * $subdist;
 
-    foreach my $i (0..$stop){
-	if (substr($str1,$i,1) ne substr($str2,$i,1)){
-	    $dist++;
-	}
-    }
-    return $dist;
+    return sqrt($dist), $num;
 }
 1;
     
