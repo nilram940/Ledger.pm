@@ -16,10 +16,7 @@ sub new{
     my $class=shift;
     my %args=@_;
 
-    # Serve the fully-parsed object from a Storable cache when the source
-    # file hasn't changed.  Callers that write to the ledger must
-    # unlink "$file.store" afterwards to force a rebuild.
-    if ($args{file}) {
+    if ($args{file} && $args{useCache}) {
         my $store = "$args{file}.store";
         if (-f $store && (stat($args{file}))[9] <= (stat($store))[9]) {
             print STDERR "store cache: $store\n";
@@ -41,7 +38,7 @@ sub new{
 
     $self->gentable;
 
-    if ($args{file}) {
+    if ($args{file} && $args{useCache}) {
         my $store = "$args{file}.store";
         my $tmp   = "$store.$$";
         eval { store($self, $tmp) && rename($tmp, $store) };

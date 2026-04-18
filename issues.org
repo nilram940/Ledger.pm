@@ -434,6 +434,59 @@ existing ~bpos~ entry in ~posmap~ causes ~update_file~ to skip the original byte
 effectively deleting the transaction from its pending position.
 Covered by ~t/test_issue5.pl~.
 
+** TODO makeid collisions and account-name coupling                    :bug:
+:PROPERTIES:
+:ID: BUG-010
+:END:
+
+Generated ID format: ~{initials}[-!]-[salt-]{FITID | date+amount}~
+
+~makeid()~ falls back to ~date+amount~ when no FITID is available.  This can
+lead to collisions between distinct transactions that share the same date and
+amount.
+
+*** Salt mechanism (partial mitigation)
+
+~makeid~ accepts a ~salt~ field on the transaction hash and inserts it between
+the initials prefix and the FITID/fallback:
+
+#+begin_src perl
+$id.=$trdat->{salt}.'-' if $trdat->{salt};
+#+end_src
+
+Salt is not set by any parser module.  It is set in per-account CSV handler
+callbacks for sources whose description field embeds a unique transaction
+identifier after asterisks:
+
+#+begin_src perl
+if ($csv->{desc} =~ /\*+([^*]+)/) {
+    $csv->{salt} = $1;
+    $csv->{salt} =~ s/\s+/-/g;
+}
+#+end_src
+
+For the CSV source this was written for, the extracted string is a stable
+per-transaction identifier embedded in the description — effectively a FITID
+substitute.  Setting it as ~salt~ rather than ~id~ means ~makeid~ still uses the
+date+amount path but prefixes it with the unique token, producing a
+collision-free key in practice.  The cleaner fix would be to set ~$csv->{id}~
+directly, which would skip the date+amount fallback entirely.
+
+CSV accounts without such a handler remain vulnerable to collision.
+
+*** Account-name coupling
+
+The initials prefix is derived from the last ~:~-separated component of the
+account path (e.g. ~Assets:Checking:MyBank~ → ~M~).  Two problems:
+
+1. *Rename breakage*: renaming an account changes the initials, making all
+   previously written ~ID:~ tags in the ledger stale — the dedup cache no
+   longer matches them on the next import.
+2. *Prefix collision*: accounts whose last component shares initials (e.g.
+   ~MyBank~ and ~MegaBank~ both give ~M~, or ~Credit Card~ under both ~Assets~
+   and ~Liabilities~ both give ~CC~) can collide in the dedup cache across
+   accounts.
+
 * Feature Requests
 
 ** TODO Add edit-scheduling methods to Transaction                 :feature:
@@ -769,110 +822,39 @@ Key open questions:
 - Whether to weight tokens by inverse frequency (rarer tokens count more)
 - How to handle ties between handler keys with equal recall
 
-** TODO Make object cache opt-in                                   :feature:
+** DONE Make object cache opt-in                                   :feature:
 :PROPERTIES:
 :ID: FR-010
+:END:
+:LOGBOOK:
+- State "DONE" from "TODO" [2026-04-18]
 :END:
 
 The ~$file.store~ Storable cache (added to speed up the web frontend) is of
 dubious value for the normal single-run use case.  The web frontend no longer
 uses Ledger.pm at all.
 
-Consider adding a ~useCache => 1~ constructor parameter so callers opt in
-explicitly rather than getting caching by default.
+Both the read and write cache blocks in ~new()~ are now gated on ~useCache => 1~.
+Callers that do not pass this option never read or write ~$file.store~.
 
-When I have a transaction file that looks like this:
+** TODO Split parser from import logic                             :feature:
+:PROPERTIES:
+:ID: FR-011
+:END:
 
-#+begin_example
+Consider splitting the module into two pieces:
 
-2026/01/15 * Opening Balance
-    Assets:Checking                $100.00
-    Equity:Opening Balances
+1. A *parser layer* that reads OFX, CSV, and JSON/Plaid/Teller files and
+   produces a common intermediate format (e.g. JSON or in-memory structs).
+2. An *import layer* that consumes that format and performs the current
+   functions: deduplication, categorisation, matching, and file editing.
 
-2026/02/02  * Coffee Shop
-    Assets:Checking                -$5.00  ;ID: CHK-001
-    Expenses:Dining
+Pros:
+- Keeps ~Ledger.pm~ focused on its core accounting functions.
+- The parser layer becomes independently testable and reusable (e.g. by a
+  future Go port, see FR-008).
 
-2026/02/02  * Checking Balance
-     [Assets:Checking]              = $95.00
-    
-2026/02/01 !  KFC
-    Assets:Checking                -$15.00  ;ID: CHK!-002
-    Expenses:Dining
-
-
-2026/02/04 ! Wal-Mart
-    Assets:Checking                -$30.00  ;ID: CHK!-003
-    Expenses:Clothes
-
- #+end_example
-
-And I import a plaid file that clears the Wal-Mart transaction,
-CHK-003, the transaction is cleared in place rather than moved above
-the other pending transactions. That is I get this:
-
-#+begin_example
-
-2026/01/15 * Opening Balance
-    Assets:Checking                $100.00
-    Equity:Opening Balances
-
-2026/02/02  * Coffee Shop
-    Assets:Checking                -$5.00  ;ID: CHK-001
-    Expenses:Dining
-
-2026/02/02  * Checking Balance
-     [Assets:Checking]              = $95.00
-
-2026/02/04  * Checking Balance
-     [Assets:Checking]              = $65.00
-
-2026/02/01 !  KFC
-    Assets:Checking                -$15.00  ;ID: CHK!-002
-    Expenses:Dining
-
-
-2026/02/04 * Wal-Mart
-    Assets:Checking                -$30.00  ;ID: CHK-003
-    Expenses:Clothes
-
- #+end_example
-
- I should get this:
- #+begin_example
-
-2026/01/15 * Opening Balance
-    Assets:Checking                $100.00
-    Equity:Opening Balances
-
-2026/02/02  * Coffee Shop
-    Assets:Checking                -$5.00  ;ID: CHK-001
-    Expenses:Dining
-
-2026/02/02  * Checking Balance
-     [Assets:Checking]              = $95.00
-
-2026/02/04 * Wal-Mart
-    Assets:Checking                -$30.00  ;ID: CHK-003
-    Expenses:Clothes
-
-2026/02/04  * Checking Balance
-     [Assets:Checking]              = $65.00
-
-2026/02/01 !  KFC
-    Assets:Checking                -$15.00  ;ID: CHK!-002
-    Expenses:Dining
-
-
-
- #+end_example
-
- I think this is a bug that was introduced with other fixes.
-
-Fix: ~checkpending~ now saves the original candidate state before overwriting
-it.  In the ~elsif($candidate->{file})~ branch, when the original state was not
-~cleared~ and the new state is ~cleared~, ~edit_pos~ is set to ~-1~ instead of
-~bpos~.  This puts the transaction in ~@append~ (inserted at ~ofxpos~) while the
-existing ~bpos~ entry in ~posmap~ causes ~update_file~ to skip the original bytes,
-effectively deleting the transaction from its pending position.
-Covered by ~t/test_issue5.pl~.
+Cons:
+- The current library deliberately minimises data loops.  Introducing an
+  intermediate serialisation step adds latency and memory overhead, and moves
+  the data further from the source format during debugging.

@@ -32,16 +32,18 @@ my $ledger = Ledger->new(
     payeetab   => '/path/to/desc.yaml',    # optional: YAML payee description cache
     accounttab => '/path/to/accounts.txt', # optional: account number -> name mapping
     idtag      => 'ID',                    # optional: tag name for transaction IDs (default: 'ID')
+    useCache   => 1,                       # optional: enable Storable object cache ($file.store)
 );
 ```
 
-On construction, the ledger checks for a Storable object cache at `$file.store`. If the cache is newer than `$file`, it is returned immediately (no subprocess, no parsing). Otherwise:
+On construction:
 
 1. Loads the payee description cache (via `YAML::Tiny`; falls back to `Storable` for legacy `desc.dat` files)
 2. Loads the account number mapping table
 3. Runs `ledger csv` to populate transactions from the existing ledger file
-4. Builds a frequency table used for auto-categorization
-5. Writes the fully-built object to `$file.store` for future fast loads
+4. Builds the Naive Bayes classifier used for auto-categorization
+
+If `useCache => 1` is passed and a Storable object cache exists at `$file.store` that is newer than `$file`, the cached object is returned immediately (steps 1–4 are skipped). Otherwise, the fully-built object is written to `$file.store` after construction.
 
 **Cache invalidation**: callers that write to the ledger (via `update()`) must unlink `$file.store` afterwards to force a rebuild on the next load.
 
