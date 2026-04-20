@@ -293,15 +293,34 @@ Covered by ~t/test_transfer.pl~ Scenario 2.
 
 *** TODO Pending (Plaid) transactions do not clear                    :bug:
 
-The automation attempts to match by ID, but the upstream ID changes between
-the pending and posted state, leaving orphaned pending transactions in the
-file.
+The automation matches pending transactions by ID, but Plaid's pending ID
+either changes or disappears when a transaction posts.  Two failure modes:
 
-Possible approaches:
-- On import, check whether parked pending transactions still exist in the new
-  export; delete or expire those that have been removed.
-- Try to match by date + amount to preserve any manual edits made since the
-  original import.
+1. *ID changes on posting*: the pending transaction has ID ~P-xxx~ and the
+   posted transaction arrives with a different ID ~C-xxx~.  The importer
+   creates a new cleared transaction, leaving the old pending entry as an
+   orphan.
+
+2. *Transaction disappears*: the pending entry is removed from subsequent
+   Plaid exports without a posted counterpart (e.g. a cancelled hold, as in
+   BUG-013).  The orphan is never matched and remains until manually removed.
+
+Both failure modes produce orphaned pending transactions; BUG-013 (removed
+holds) is essentially the same problem scoped to case 2.  A unified fix may
+address both:
+
+- *ID-change case*: after the absence scan from BUG-013 identifies a pending
+  transaction no longer in the current export, attempt a date+amount match
+  against newly-posted cleared transactions before deleting it.  A match
+  means the pending entry should be deleted (the cleared version is
+  authoritative); no match means the transaction was removed without posting
+  and should also be deleted.
+- *Both cases* require the ~pending_snapshot~ opt-in from BUG-013 (Plaid
+  provides a complete snapshot; OFX/CSV do not).
+
+Possible additional approach: match pending→cleared by date + amount during
+normal import, falling back to ID only when an ID match fails.  Risk: date
+and amount alone may not be unique enough to avoid false matches.
 
 ** FIXED update_file posmap clobber — pending tx left in place        :bug:
 :PROPERTIES:
