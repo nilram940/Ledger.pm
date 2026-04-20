@@ -89,7 +89,7 @@ long-term fix for OFX but requires surfacing ~acctid~ from the OFX parser to
    script (one per institution, or a generic one driven by a YAML mapping) and
    keeps the injection *outside* Ledger.pm entirely.
 
-** TODO Constructor arguments are poorly integrated                     :bug:
+** INVESTIGATING Constructor arguments are poorly integrated             :bug:
 :PROPERTIES:
 :ID: BUG-001
 :END:
@@ -104,6 +104,8 @@ Stored as ~$self->{idtag}~ but never read back.  Four sites hardcode ~'ID:'~
 regardless of the option (see separate issue below).  Resolution: either thread
 the tag through all call sites, or remove the option and document ~'ID'~ as
 fixed.
+
+Deferred to BUG-002, which tracks this in full detail.
 
 *** ~accounttab~ / ~getaccount~
 
@@ -122,6 +124,12 @@ callers must manually plumb it through to ~getaccount~.  Resolution: either make
 ~fromStmt~/~addStmtTran~ so account numbers are resolved automatically, or
 remove ~accounttab~ from the constructor and leave account resolution entirely to
 the caller.
+
+*Recommended resolution*: remove ~accounttab~ from the constructor.  Wiring
+~getaccount~ into ~addStmtTran~ requires deciding when to resolve (OFX has
+~acctid~ in parsed data; CSV may not), which overlaps with the larger
+filename-vs-account design work in FR-009.  Leaving resolution to callers is
+simpler and honest about what the code actually does.
 
 ** TODO idtag option is not consistently honoured                       :bug:
 :PROPERTIES:
