@@ -594,6 +594,56 @@ $csv{quantity} =~ s/^(-?)[^-\d]*\$/$1/;
 This strips any currency prefix (including currency symbols and spaces)
 while keeping the sign.  Positive amounts are unaffected.
 
+** TODO Removed holds left as orphaned pending transactions            :bug:
+:PROPERTIES:
+:ID: BUG-013
+:END:
+
+Vendors occasionally place holds on cards that appear as pending
+transactions in Plaid (and possibly Teller).  When the hold is
+released without posting, the transaction simply disappears from
+subsequent statement fetches.  The importer has no deletion event to
+process — it only sees new or updated transactions — so the orphaned
+pending entry remains in the ledger until manually removed.
+
+This is distinct from BUG-005, where a pending transaction /posts/ but
+its ID changes between the pending and posted states, causing a match
+failure.  Here the transaction is never posted at all; the desired
+outcome is deletion, not clearing.
+
+*** Root cause
+
+~makeid~ appends ~!~ to the key for pending transactions, making them
+distinct in the ~{id}~ cache from any posted counterpart.  This is
+correct, but the cache only prevents re-importing a transaction already
+seen — it has no mechanism to detect that a previously-imported pending
+transaction is no longer present in the current statement.
+
+*** Fix
+
+After all transactions in a statement have been processed, perform an
+absence scan:
+
+1. Collect the set of ~makeid~ keys for every pending transaction seen
+   in this statement run (keys ending in ~!-...~ for the current
+   account).
+2. Retrieve all existing pending transactions in the ledger for the
+   same account (~getTransactions('pending')~ filtered by account
+   posting).
+3. For each existing pending transaction whose ~ID:~ tag key is /not/
+   in the seen set, schedule it for deletion (i.e. in-place overwrite
+   with empty content, analogous to how cleared transactions overwrite
+   pending ones).
+
+This scan should be opt-in or source-aware: it is only correct when
+the statement provides a /complete/ snapshot of current pending
+transactions, not just new ones.  Plaid satisfies this (it always
+returns all current pending transactions for an account).  OFX/QFX
+provides a date-bounded window and may not include all pending
+transactions; CSV almost certainly does not.  A ~pending_snapshot =>
+1~ option to ~fromStmt~ (or inferred from the ~.json~ extension) would
+gate the scan.
+
 * Feature Requests
 
 ** DONE Add edit-scheduling methods to Transaction                 :feature:
@@ -1137,3 +1187,79 @@ Each test should follow the existing pattern: copy fixture to a temp directory,
 run the parser, assert on the resulting transaction list (payee, amount, date,
 account).  Integration with ~fromStmt~ can be tested end-to-end using a minimal
 ledger file (no existing transactions needed for parse-only tests).
+
+** TODO Track separate insertion files for cleared, pending, and uncleared transactions :feature:
+:PROPERTIES:
+:ID: FR-014
+:END:
+
+Currently all imported transactions are inserted at a single ~ofxpos~
+— the byte position of the first non-cleared transaction in ~ofxfile~
+(or EOF).  ~ofxfile~ itself is fixed to the file containing the last
+cleared transaction.  This means every new transaction, regardless of
+state, lands at the same point, which breaks when the ledger is split
+across files by state.
+
+*** Goal
+
+Support a ledger organised as:
+
+#+begin_example
+!include cleared.ldg
+!include pending.ldg
+!include uncleared.ldg
+#+end_example
+
+Each new transaction should be appended to the file that matches its
+state, so the three files stay coherent over time.
+
+*** Design
+
+Replace the single ~ofxfile~/~ofxpos~ pair with three independent
+~(file, pos)~ pairs, one per state.
+
+**** Insertion point logic (single-file and multi-file)
+
+For each state, the insertion point is the ~bpos~ of the first
+transaction whose state sorts /after/ the target state in the sequence
+cleared → pending → uncleared, within the target file.  If no such
+transaction exists, the insertion point is EOF of the target file.
+This keeps each section contiguous regardless of whether the sections
+live in one file or three.
+
+Concretely, within a given file:
+
+| Inserting   | Insertion point                                          |
+|-------------+----------------------------------------------------------|
+| cleared     | ~bpos~ of first pending or uncleared txn; else EOF       |
+| pending     | ~bpos~ of first uncleared txn; else EOF                  |
+| uncleared   | EOF                                                      |
+
+(This generalises the current ~getofxpos~ logic, which already uses
+~bpos~ of the first non-cleared transaction as the single insertion
+point.)
+
+**** File routing
+
+| State     | Target file                                     | Fallback        |
+|-----------+-------------------------------------------------+-----------------|
+| cleared   | file of last cleared txn                        | —               |
+| pending   | file of last pending txn                        | uncleared file  |
+| uncleared | file of last uncleared txn                      | cleared file    |
+
+For single-file setups all three resolve to the same file and the
+insertion points within that file keep the sections ordered.  For
+multi-file setups (~!include cleared.ldg~ etc.) each state maps to its
+own file and the insertion point is EOF of that file (since no
+later-state transactions exist there).
+
+**** Detection and fallback
+
+No special ~!include~ scanning is required — file routing falls out
+naturally from which file each state's last transaction lives in.  If a
+state has no existing transactions the fallback column above applies.
+If none of the fallbacks resolve (empty ledger), behaviour is unchanged
+from today.
+
+This applies globally — ~fromStmt~, ~scheduleAppend~, and any other
+path that calls ~update()~.
