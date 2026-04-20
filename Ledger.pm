@@ -554,6 +554,11 @@ sub update{
 		    ($_->{file}=>1, $_->{edit}=>1):
 		    ($_->{edit}=>1))} @edit;
 
+    # Ensure the ofxfile is written even when @edit is empty (e.g. all
+    # incoming transactions were deduplicated but balance entries remain).
+    $files{$self->{ofxfile}} = 1
+        if $self->{ofxfile} && %{$self->{balance}};
+
     foreach $file (keys %files){
 	$self->update_file($file);
     }
@@ -588,13 +593,16 @@ sub update_file{
     
     my %posmap = map &{$posfilter}($_),  (@edit);
 
-    if ($ofx && @append){
+    my @balance_entries = sort { $a->{date} <=> $b->{date} }
+                              map { values %$_ } (values %{$self->{balance}});
+    if ($ofx && (@append || @balance_entries)){
         # Use //= so an existing in-place edit at ofxpos is not overwritten.
         # If the matched pending transaction sits at ofxpos, the @append list
         # falls through to the end-of-file block below instead.
 	$posmap{$self->{ofxpos}}//=-1;
     }
     my $lastpos=0;
+    my $balance_written = 0;
     print STDERR "file=$file\n";
 
     # Write to a temp file first so a crash never destroys the original.
@@ -624,6 +632,13 @@ sub update_file{
                     ($transaction->{edit_pos} == $pos)) {
                     print $writeh "\n".$transaction->toString();
                 }
+                # When ofxpos was claimed by an in-place edit (blocking the -1
+                # sentinel), write balance entries immediately after the edit.
+                if ($ofx && $pos == $self->{ofxpos} && !$balance_written && @balance_entries) {
+                    print $writeh "\n; ".localtime."\n\n";
+                    print $writeh join("\n", map { $_->toString } @balance_entries)."\n\n";
+                    $balance_written = 1;
+                }
             } elsif ($ofx) {
                 my @cleared   = grep { $_->{state} eq 'cleared'  } @append;
                 my @uncleared = grep { $_->{state} ne 'cleared'  } @append;
@@ -631,12 +646,12 @@ sub update_file{
                 print $writeh join("\n",
                     (map { $_->toString }
                         (sort { $a->{date} <=> $b->{date} } @cleared),
-                        (sort { $a->{date} <=> $b->{date} }
-                             map { values %$_ } (values %{$self->{balance}})),
+                        @balance_entries,
                         (sort { $a->{date} <=> $b->{date} } @uncleared)
                     ))."\n\n";
                 @append=();
                 $lastpos=$pos;
+                $balance_written = 1;
             }
         }
 
@@ -650,11 +665,16 @@ sub update_file{
         }
         close($readh);
 
-        if (@append) {
+        my @remaining_bal = ($ofx && !$balance_written) ? @balance_entries : ();
+        if (@append || @remaining_bal) {
+            my @cleared   = grep { $_->{state} eq 'cleared'  } @append;
+            my @uncleared = grep { $_->{state} ne 'cleared'  } @append;
             print $writeh '; '.localtime."\n\n";
             print $writeh join("\n",
                 (map { $_->toString }
-                     (sort { $a->{date} <=> $b->{date} } @append)
+                    (sort { $a->{date} <=> $b->{date} } @cleared),
+                    @remaining_bal,
+                    (sort { $a->{date} <=> $b->{date} } @uncleared)
                 ))."\n\n";
         }
         close($writeh);

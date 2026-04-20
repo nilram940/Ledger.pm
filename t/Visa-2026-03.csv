@@ -1,2 +1,3 @@
 2026/03/01,VISA-001,Credit Card Payment,500.00,Liabilities:Visa
 2026/03/05,VISA-002,Credit Card Payment,300.00,Liabilities:Visa
+2026/03/05,,Visa Balance,= $800.00,Liabilities:Visa

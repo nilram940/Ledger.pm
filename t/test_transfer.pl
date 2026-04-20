@@ -86,8 +86,34 @@ $ledger->update();
 
 print "\n=== Resulting ledger file ===\n";
 open(my $fh, '<', $ledger_file) or die $!;
-print while <$fh>;
+my $content = do { local $/; <$fh> };
 close $fh;
+print $content;
+
+check($content);
+
+sub check {
+    my $content = shift;
+
+    my $bal_visa     = index($content, '= $800.00');
+    my $bal_checking = index($content, '= $-812.50');
+    my $scenario1_complete = $content !~ /^\s+Equity:Transfers:Visa/m;
+
+    print "\n=== Transfer RESULT ===\n";
+    printf "Visa balance assertion \$800.00 present:    %s  (want yes)\n",
+        $bal_visa     >= 0 ? 'yes' : 'NO';
+    printf "Checking balance -\$812.50 present:         %s  (want yes)\n",
+        $bal_checking >= 0 ? 'yes' : 'NO';
+    printf "Scenario 1 Equity:Transfers removed:       %s  (want yes)\n",
+        $scenario1_complete ? 'yes' : 'NO';
+
+    if ($bal_visa >= 0 && $bal_checking >= 0 && $scenario1_complete) {
+        print "PASS: balance assertions written; transfer completed\n";
+    } else {
+        print "FAIL\n";
+        exit 1;
+    }
+}
 
 # -----------------------------------------------------------------------
 sub dump_transfer_store {

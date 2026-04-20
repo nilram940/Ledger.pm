@@ -487,6 +487,105 @@ account path (e.g. ~Assets:Checking:MyBank~ → ~M~).  Two problems:
    and ~Liabilities~ both give ~CC~) can collide in the dedup cache across
    accounts.
 
+** FIXED Balance assertions silently dropped in multiple paths         :bug:
+:PROPERTIES:
+:ID: BUG-011
+:END:
+:LOGBOOK:
+- State "FIXED" from "TODO" [2026-04-20]
+:END:
+
+Three separate code paths caused balance assertions from ~addStmtBal~ to be
+silently dropped without being written to the ledger file.
+
+*** Path 1: ~@append~ empty (all transactions deduplicated)
+
+~update_file~ only registered the ~ofxpos~ sentinel when ~@append~ was
+non-empty.  If every incoming statement transaction matched an existing ID
+(second import run, or a statement with only already-cleared transactions),
+~@append~ was empty, the sentinel was never inserted, and balance assertions
+were never written.
+
+Fix: pre-compute ~@balance_entries~ and widen the condition:
+
+#+begin_src perl
+my @balance_entries = sort { $a->{date} <=> $b->{date} }
+                          map { values %$_ } (values %{$self->{balance}});
+if ($ofx && (@append || @balance_entries)) {
+    $posmap{$self->{ofxpos}} //= -1;
+}
+#+end_src
+
+*** Path 2: ~ofxpos~ blocked by an in-place edit
+
+When a pending transaction at ~ofxpos~ was cleared in-place (e.g. a two-sided
+transfer where the match was found via the ledgerCSV queue), its ~bpos~
+occupied ~posmap~ before the sentinel could be inserted via ~//=~.  The
+~elsif ($ofx)~ block was never reached and balance assertions were dropped.
+
+Fix: after writing any in-place edit at ~ofxpos~, immediately append balance
+entries if they have not yet been written:
+
+#+begin_src perl
+if ($ofx && $pos == $self->{ofxpos} && !$balance_written && @balance_entries) {
+    print $writeh "\n; ".localtime."\n\n";
+    print $writeh join("\n", map { $_->toString } @balance_entries)."\n\n";
+    $balance_written = 1;
+}
+#+end_src
+
+A ~$balance_written~ flag prevents double-writing; the end-of-file block uses
+the same flag to catch any remaining unwritten entries.
+
+*** Path 3: ~update()~ skips ~update_file~ when ~@edit~ is empty
+
+When all incoming transactions were deduplicated, ~@edit~ was empty.
+~%files~ was built entirely from ~@edit~, so ~update_file~ was never called at
+all — balance assertions in ~$self->{balance}~ were never written regardless
+of the ~update_file~ fixes above.
+
+Fix: unconditionally add ~ofxfile~ to ~%files~ when balance entries exist:
+
+#+begin_src perl
+$files{$self->{ofxfile}} = 1
+    if $self->{ofxfile} && %{$self->{balance}};
+#+end_src
+
+*** Regression test
+
+~t/test_bug011.pl~ uses a fixture with one already-cleared transaction
+(~ID: C-CHK-001~) and a CSV that re-imports the same transaction plus a
+balance assertion.  All three paths are exercised: the transaction is
+deduplicated (~@append~ empty), ~@edit~ is empty, and the balance assertion
+must still appear in the resulting file.
+
+** FIXED CSV parser strips minus sign from negative balance assertions  :bug:
+:PROPERTIES:
+:ID: BUG-012
+:END:
+:LOGBOOK:
+- State "FIXED" from "TODO" [2026-04-20]
+:END:
+
+The quantity-cleanup regex in ~Ledger::CSV::parsefile~:
+
+#+begin_src perl
+$csv{quantity} =~ s/^.*\$//;
+#+end_src
+
+uses a greedy ~.*~ that matches everything up to and including the last ~$~
+sign.  For a negative balance assertion like ~= -$812.50~ the substitution
+consumed ~-$~, leaving ~812.50~ and silently discarding the sign.
+
+Fix: capture and preserve the optional leading minus:
+
+#+begin_src perl
+$csv{quantity} =~ s/^(-?)[^-\d]*\$/$1/;
+#+end_src
+
+This strips any currency prefix (including currency symbols and spaces)
+while keeping the sign.  Positive amounts are unaffected.
+
 * Feature Requests
 
 ** TODO Add edit-scheduling methods to Transaction                 :feature:

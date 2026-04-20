@@ -187,15 +187,19 @@ sub check_4a {
 
     my $pending_count = () = $content =~ /^2026\/04\/02\s+!/mg;
     my $cleared_count = () = $content =~ /^2026\/04\/02\s+\*/mg;
+    my $bal_pos       = index($content, '= $1871.50');
 
     print "\n--- Issue 4a RESULT ---\n";
     printf "Grocery Store (04/02) pending occurrences: %d  (want 0)\n", $pending_count;
     printf "Grocery Store (04/02) cleared occurrences: %d  (want 1)\n", $cleared_count;
+    printf "Balance assertion \$1871.50 present:        %s  (want yes)\n",
+        $bal_pos >= 0 ? 'yes' : 'NO';
 
-    if ($pending_count == 0 && $cleared_count == 1) {
+    if ($pending_count == 0 && $cleared_count == 1 && $bal_pos >= 0) {
         print "PASS: pending transaction correctly cleared in-place\n";
     } else {
-        print "FAIL: pending left in file or cleared version duplicated\n";
+        print "FAIL: pending left in file, cleared duplicated, or balance assertion missing\n";
+        exit 1;
     }
 }
 
@@ -218,9 +222,18 @@ sub check_4b {
     printf "Has CHK-PAY-001 ID:        %s\n", $has_check_id ? 'yes' : 'no';
     printf "Uncleared Visa Payment:    %s  (want no)\n",  $uncleared    ? 'YES' : 'no';
 
-    if (@visa_txns == 1 && $has_visa_id && !$uncleared) {
+    my $bal_checking = index($content, '= $1468.00');
+    my $bal_visa     = index($content, '= $500.00');
+    printf "Balance assertion \$1468.00 (Checking):    %s  (want yes)\n",
+        $bal_checking >= 0 ? 'yes' : 'NO';
+    printf "Balance assertion \$500.00 (Visa):         %s  (want yes)\n",
+        $bal_visa >= 0 ? 'yes' : 'NO';
+
+    if (@visa_txns == 1 && $has_visa_id && !$uncleared
+            && $bal_checking >= 0 && $bal_visa >= 0) {
         print "PASS: single cleared Visa Payment with CC ID\n";
     } else {
-        print "FAIL: uncleared left in file, or duplicate, or CC ID missing\n";
+        print "FAIL: uncleared left in file, duplicate, CC ID missing, or balance assertion missing\n";
+        exit 1;
     }
 }
