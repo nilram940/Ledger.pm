@@ -36,7 +36,7 @@ sub new{
 
     Ledger::CSV::ledgerCSV($self, $args{file});
 
-    $self->gentable;
+    $self->gentable unless $args{noClassify};
 
     if ($args{file} && $args{useCache}) {
         my $store = "$args{file}.store";

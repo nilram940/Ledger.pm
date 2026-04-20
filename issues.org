@@ -699,18 +699,21 @@ old training data continues to dilute the new signal until enough new
 transactions accumulate to overcome it (~finddest~ requires >12 samples at
 >99.99% agreement for high-confidence results).
 
-** TODO Option to skip frequency-table construction                :feature:
+** DONE Option to skip frequency-table construction                :feature:
 :PROPERTIES:
 :ID: FR-003
+:END:
+:LOGBOOK:
+- State "DONE" from "TODO" [2026-04-20]
 :END:
 
 ~Ledger->new~ always calls ~gentable()~, which scans all transactions to build
 the Bayesian auto-categorisation table.  When the library is loaded only for
 editing existing transactions (not importing new ones), this work is wasted.
 
-Proposed: a ~noClassify => 1~ constructor option that skips the ~gentable()~
+Implemented: a ~noClassify => 1~ constructor option that skips the ~gentable()~
 call.  Callers that only call ~update()~ on already-categorised transactions
-would see faster construction, particularly on large ledger files where
+will see faster construction, particularly on large ledger files where
 ~ledger csv~ is already the dominant cost.
 
 ** DONE Balance assertions in CSV importer                         :feature:

@@ -33,6 +33,7 @@ my $ledger = Ledger->new(
     accounttab => '/path/to/accounts.txt', # optional: account number -> name mapping
     idtag      => 'ID',                    # optional: tag name for transaction IDs (default: 'ID')
     useCache   => 1,                       # optional: enable Storable object cache ($file.store)
+    noClassify => 1,                       # optional: skip gentable() (edit-only callers, no import)
 );
 ```
 
@@ -41,7 +42,7 @@ On construction:
 1. Loads the payee description cache (via `YAML::Tiny`; falls back to `Storable` for legacy `desc.dat` files)
 2. Loads the account number mapping table
 3. Runs `ledger csv` to populate transactions from the existing ledger file
-4. Builds the Naive Bayes classifier used for auto-categorization
+4. Builds the Naive Bayes classifier used for auto-categorization (skipped if `noClassify => 1`)
 
 If `useCache => 1` is passed and a Storable object cache exists at `$file.store` that is newer than `$file`, the cached object is returned immediately (steps 1–4 are skipped). Otherwise, the fully-built object is written to `$file.store` after construction.
 
