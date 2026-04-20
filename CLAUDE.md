@@ -12,9 +12,41 @@ Perl modules required: `Storable`, `YAML::Tiny`, `Text::CSV`, `Date::Parse`, `JS
 
 External tool: `ledger` CLI (used via subprocess in `Ledger::CSV::ledgerCSV` to populate transactions from an existing `.dat` file, unless a fresh Storable object cache exists)
 
-## No Build or Test Infrastructure
+## Running the Tests
 
-There is no `Makefile`, test suite, or CI configuration. The library is used by requiring it from external scripts. Validation is done by running against real ledger/statement files.
+```sh
+cd Ledger.pm/t
+perl run_tests.pl          # run all tests, print summary
+perl -I.. test_fr001.pl   # run a single test
+```
+
+Tests must be run from the `t/` directory so they can find fixture files by relative path.
+Each `test_*.pl` exits 0 on pass and 1 on failure. `run_tests.pl` runs all of them and
+prints a one-line-per-test summary; on failure it re-prints the full output of failing tests.
+
+### Test inventory
+
+| File | Covers |
+|------|--------|
+| `test_fr001.pl` | `scheduleEdit()` / `scheduleAppend()` unit tests (FR-001) |
+| `test_transfer.pl` | Transfer matching: half-transfer completion, manually-entered transfer, expense with bank account at posting[1] |
+| `test_issue4.pl` | Issue 4a: pending→cleared not left in place; Issue 4b: CC import doesn't replace Checking split |
+| `test_issue5.pl` | Issue 5: pending transaction moved to cleared section (not overwritten in place) |
+| `test_bug011.pl` | BUG-011: balance assertion written even when `@append` is empty (all transactions deduplicated) |
+
+### Fixture files
+
+Each test works on a copy of its fixtures in a temporary directory so originals are never modified.
+
+| Fixture | Used by |
+|---------|---------|
+| `transfer.ldg`, `Visa-2026-03.csv`, `Checking-2026-03.csv` | `test_transfer.pl`, `test_fr001.pl` |
+| `issue4a.ldg`, `issue4a.csv` | `test_issue4.pl` (4a) |
+| `issue4b.ldg`, `issue4b-Visa.csv`, `issue4b-Checking.csv` | `test_issue4.pl` (4b) |
+| `issue5.ldg`, `issue5.csv` | `test_issue5.pl` |
+| `bug011.ldg`, `bug011.csv` | `test_bug011.pl` |
+
+There is no `Makefile` or CI configuration.
 
 ## Architecture
 

@@ -21,6 +21,21 @@ sub new{
     return $self;
 }
 
+sub scheduleEdit {
+    my ($self, $file) = @_;
+    $file //= $self->{file};
+    $self->findtext if $file && !$self->{bpos};
+    $self->{edit}     = $file;
+    $self->{edit_pos} = $self->{bpos} || 0;
+    $self->{edit_end} = $self->{epos};
+}
+
+sub scheduleAppend {
+    my ($self, $file) = @_;
+    $self->{edit}     = $file;
+    $self->{edit_pos} = -1;
+}
+
 sub findtext{
     my ($self, $fh)=@_;
     my $close=0;
@@ -185,12 +200,7 @@ sub checkpending{
 	if ($posting->{account} !~/^Equity/ &&
 	    $posting->{account} !~/^(Assets|Liabilities)/ &&
 	    $posting->{account} ne $self->getPosting(1)->{account}){
-	    if ($candidate->{file} && ! $candidate->{bpos}){
-		$candidate->findtext;
-	    }
-	    $candidate->{edit}=$candidate->{file};
-	    $candidate->{edit_pos}=$candidate->{bpos};
-	    $candidate->{edit_end}=$candidate->{epos};
+	    $candidate->scheduleEdit();
 	    $candidate->setPosting($match, 
 				   'Equity:Transfers:'.$self->{transfer});
 	    return 1;
@@ -208,21 +218,17 @@ sub checkpending{
 	$candidate->{edit_pos}=$self->{bpos};
 	$candidate->{edit_end}=$self->{epos};
     }elsif($candidate->{file}){
-	$candidate->{edit}=$candidate->{file};
 	if ($orig_state ne 'cleared' && $candidate->{state} eq 'cleared'){
 	    # Pending → cleared: delete from pending position, append at ofxpos
 	    # bpos in posmap causes update_file to skip the original bytes;
 	    # edit_pos=-1 puts the transaction in @append for insertion at ofxpos.
-	    $candidate->{edit_pos}=-1;
+	    $candidate->scheduleAppend($candidate->{file});
 	}else{
 	    # New import matched an existing uncleared — overwrite in the ledger
-	    # edit_pos=0 triggers findtext in update() when bpos not yet set
-	    $candidate->{edit_pos}=$candidate->{bpos}||0;
-	    $candidate->{edit_end}=$candidate->{epos};
+	    $candidate->scheduleEdit();
 	}
     }else{
-	$candidate->{edit}=$self->{edit}||$self->{file};
-	$candidate->{edit_pos}=-1;
+	$candidate->scheduleAppend($self->{edit}||$self->{file});
     }
     #$candidate->{edit_pos}=$self->{bpos};
     $self->getPosting(0)->{bpos}=$candidate->getPosting($match)->{bpos};

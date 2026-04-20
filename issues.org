@@ -588,10 +588,21 @@ while keeping the sign.  Positive amounts are unaffected.
 
 * Feature Requests
 
-** TODO Add edit-scheduling methods to Transaction                 :feature:
+** DONE Add edit-scheduling methods to Transaction                 :feature:
 :PROPERTIES:
 :ID: FR-001
 :END:
+:LOGBOOK:
+- State "DONE" from "TODO" [2026-04-20]
+:END:
+
+Added ~scheduleEdit($file?)~ and ~scheduleAppend($file)~ to ~Ledger::Transaction~.
+~scheduleEdit~ calls ~findtext~ if ~bpos~ is not yet set, then sets ~edit~/~edit_pos~/~edit_end~.
+~scheduleAppend~ sets ~edit~ and ~edit_pos=-1~.
+
+Updated all internal callers: ~checkpending~ (all three branch cases) and ~transfer~
+in ~Ledger.pm~ use the new methods.  The direct field manipulation pattern has been
+removed from the library.
 
 External callers that need to trigger an in-place rewrite of a transaction
 currently manipulate internal fields directly:
@@ -935,6 +946,126 @@ uses Ledger.pm at all.
 
 Both the read and write cache blocks in ~new()~ are now gated on ~useCache => 1~.
 Callers that do not pass this option never read or write ~$file.store~.
+
+** TODO Integrate ledgertemp2.pl as Ledger::Template               :feature:
+:PROPERTIES:
+:ID: FR-012
+:END:
+
+~ledgertemp2.pl~ (and ~ledgertemp3.pl~) append directly to the ledger file with
+~>>~, bypassing Ledger.pm's ~ofxpos~ insertion point.  This causes file
+degradation: cleared template transactions land after the uncleared section,
+which subsequent ~stmt2ledger.pl~ runs interleave with new transactions.
+
+The fix is to route template output through Ledger.pm's write path.  The core
+challenge is that template entries are raw ledger transaction strings — the
+frequency/date header is stripped but the body is never parsed.
+
+*** Template file format
+
+Each paragraph in a ~.tpl~ file consists of a frequency header on the first
+line, followed by a raw ledger transaction body with an ~ID:~ placeholder:
+
+#+begin_example
+W3
+Transit Authority
+    Expenses:Transportation:Transit     $90.00
+    Assets:Checking                    ;ID:
+#+end_example
+
+The frequency code (~W~=weekly, ~B~=biweekly, ~M~=monthly) and day offset are
+parsed; everything else is treated as an opaque string.  The script generates
+occurrence dates, computes an ID key from the body, substitutes the date and
+key into the string, and prints.
+
+*** Three implementation paths
+
+**** Path A: Parse raw ledger text → Transaction objects (recommended long-term)
+
+Add ~Ledger::Template~ with a ~parsefile~ function dispatched from ~fromStmt~
+(~.tpl~ extension).  Parse the raw transaction body into a ~Ledger::Transaction~
+object: payee line, state marker, and postings.  Call ~addTransaction~ directly,
+bypassing ~addStmtTran~ (templates are already fully categorised).
+
+Pros:
+- Template files stay in human-readable ledger format; existing ~.tpl~ files
+  require only minor header adjustments.
+- Full ~Ledger::Transaction~ objects: ID dedup via ~$self->{id}~, proper
+  ~ofxpos~ insertion, testable.
+- ID generation unified under ~Ledger::makeid~; format mismatch eliminated.
+
+Cons:
+- Requires writing a ledger transaction text parser — something Ledger.pm has
+  never needed (it reads via ~ledger csv~, not directly from ~.dat~ files).
+  The needed subset is narrow (payee, state, account+amount postings) but is a
+  new surface to keep correct.
+- Ledger idioms not used in templates today (commodities, virtual accounts)
+  will cause parser failures if they appear later.
+
+**** Path B: New structured template format (YAML)
+
+Replace the raw-string body with structured YAML:
+
+#+begin_src yaml
+- freq: W
+  day: 3
+  payee: Transit Authority
+  postings:
+    - account: Expenses:Transportation:Transit
+      amount: "90.00"
+    - account: Assets:Checking
+#+end_src
+
+Pros:
+- No text parser needed; maps directly to ~Ledger::Transaction~ fields.
+- ~YAML::Tiny~ is already a dependency.
+
+Cons:
+- Breaking format change; existing ~.tpl~ files must be migrated.
+- More verbose; loses the ledger-native syntax users already know.
+
+Only worthwhile if templates are ever generated programmatically.
+
+**** Path C: Keep strings, fix only the insertion point (recommended short-term)
+
+Keep raw transaction strings.  Add a ~fromTemplate~ method that generates
+occurrence dates, computes the ID key (see below), checks ~$self->{id}~, and
+appends the raw string at ~ofxpos~ via ~update_file~.  Solves file degradation
+without a transaction parser.
+
+Cons:
+- Not zero parsing: computing the ID key requires extracting the account name
+  and amount from the first posting line (one regex, but still parsing).
+- Format coupling: ~ledgertemp2.pl~'s ~makeid~ produces ~EC-TEMP-2026-04-20+90.00~
+  while ~Ledger::makeid~ produces ~EC-2026/04/20+$90.00~ — different date
+  separators, different ~$~ handling, different infix.  Previously written
+  template IDs are baked into the ledger; changing the format requires either
+  a migration or a dual-format lookup in ~$self->{id}~.
+- No ~Ledger::Transaction~ object: cannot edit in place later, harder to test.
+
+*** Dedup mechanism
+
+~$self->{id}~ is populated during construction from ~ledger csv~ output:
+~CSV.pm~ line 92 sets ~$ledger->{id}->{$csv{key}} = $csv{payee}~ for every
+posting that carries an ~ID:~ tag.  Previously written template transactions
+are already present in this hash.
+
+For Path A/B, ~addTransaction~ calls ~makeid~ to generate the lookup key and
+checks ~$self->{id}~ before writing — the same path used by all other
+importers.
+
+For Path C, the caller must reproduce ~ledgertemp2.pl~'s key formula
+(~{initials}-TEMP-{YYYY-MM-DD}{±amount}~) from the raw string in order to
+perform the same lookup.
+
+*** Relationship to ledgertemp3.pl
+
+~ledgertemp3.pl~ takes explicit begin/end dates and has no ID deduplication by
+design — it regenerates the full range on every run.  It writes to a separate
+planning register (~check.ldg~), not the main cleared ledger.  If ~check.ldg~
+is not part of the main ledger managed by Ledger.pm, there is no file
+degradation problem and no pressure to integrate it.  Defer unless ~check.ldg~
+is added to the main ~!include~ tree.
 
 ** TODO Split parser from import logic                             :feature:
 :PROPERTIES:

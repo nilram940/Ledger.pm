@@ -235,8 +235,7 @@ sub addStmtTran{
     my $transaction=new Ledger::Transaction 
 	($stmttrn->{date}, $stmttrn->{state} || "cleared", $stmttrn->{number}, 
 	 $payee);
-    $transaction->{edit}=$self->{ofxfile};
-    $transaction->{edit_pos}=-1;
+    $transaction->scheduleAppend($self->{ofxfile});
     
     my $posting=$transaction->addPosting($account, $stmttrn->{quantity}+0,
 					 $stmttrn->{commodity},
@@ -325,9 +324,7 @@ sub transfer{
             delete $self->{transfer}->{$key} unless @{$transfer};
 
             # Ensure edit markers are set so the matched transaction gets rewritten.
-            $other->{edit}||=$other->{file};
-            $other->{edit_pos}||=$other->{bpos};
-            $other->{edit_end}||=$other->{epos};
+            $other->scheduleEdit() unless $other->{edit};
             # Rewrite the matched posting to Equity for uncleared/pending transactions
             # (e.g. auto-categorised as Expenses/Assets before the transfer was recognised).
             if ($opost->{account} ne $account && $other->{state} ne 'cleared'){
