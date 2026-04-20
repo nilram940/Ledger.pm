@@ -1,0 +1,24 @@
+[
+  {
+    "id": "teller_acc_001",
+    "name": "Checking",
+    "official_name": "Premium Checking",
+    "institution": {
+      "name": "First Bank"
+    },
+    "type": "depository",
+    "balances": {
+      "ledger": 987.50
+    },
+    "transactions": [
+      {
+        "id": "teller_txn_001",
+        "amount": "-12.50",
+        "description": "Coffee Shop",
+        "status": "posted",
+        "date": "2026-02-05",
+        "type": "card_payment"
+      }
+    ]
+  }
+]

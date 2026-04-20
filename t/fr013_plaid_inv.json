@@ -1,0 +1,34 @@
+{
+  "accounts": [
+    {
+      "account_id": "inv_brokerage_001",
+      "name": "My Brokerage",
+      "official_name": "Investment Account",
+      "ledger_name": "My Brokerage",
+      "type": "investment",
+      "subtype": "brokerage",
+      "balances": {
+        "current": 5900.00
+      }
+    }
+  ],
+  "transactions": [],
+  "securities": [
+    {
+      "security_id": "sec_aapl_001",
+      "ticker_symbol": "AAPL",
+      "name": "Apple Inc"
+    }
+  ],
+  "investment_transactions": [
+    {
+      "account_id": "inv_brokerage_001",
+      "investment_transaction_id": "inv_txn_001",
+      "security_id": "sec_aapl_001",
+      "name": "Buy Apple Inc",
+      "quantity": 5.0,
+      "amount": 900.00,
+      "date": "2026-02-05"
+    }
+  ]
+}

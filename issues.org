@@ -1207,9 +1207,12 @@ Cons:
   intermediate serialisation step adds latency and memory overhead, and moves
   the data further from the source format during debugging.
 
-** TODO Add test coverage for OFX and Plaid/JSON importers             :feature:
+** DONE Add test coverage for OFX and Plaid/JSON importers             :feature:
 :PROPERTIES:
 :ID: FR-013
+:END:
+:LOGBOOK:
+- State "DONE" from "TODO" [2026-04-20]
 :END:
 
 The existing test suite covers CSV import, transfer matching, and in-place
@@ -1244,6 +1247,24 @@ Each test should follow the existing pattern: copy fixture to a temp directory,
 run the parser, assert on the resulting transaction list (payee, amount, date,
 account).  Integration with ~fromStmt~ can be tested end-to-end using a minimal
 ledger file (no existing transactions needed for parse-only tests).
+
+*** Implementation
+
+Three test files and four fixtures added:
+
+| Test | Fixture(s) | Assertions |
+|------+------------+------------|
+| ~t/test_fr013_ofx.pl~ | ~fr013.ofx~, ~fr013_base.ldg~ | 2 transactions: payee, qty, date, state; check number on Hardware Store; LEDGERBAL balance assertion written |
+| ~t/test_fr013_plaid.pl~ | ~fr013_plaid.json~, ~fr013_base.ldg~ | ~ledger_name~ override used; cleared vs pending state; negated Plaid amounts; balance assertion written |
+| ~t/test_fr013_teller.pl~ | ~fr013_teller.json~, ~fr013_base.ldg~ | institution+official_name account derivation; sign pass-through for depository; balance assertion written |
+
+| ~t/test_fr013_plaid_inv.pl~ | ~fr013_plaid_inv.json~, ~fr013_base.ldg~ | ~addinvestments~: AAPL ticker resolved via securities map, share qty, cost basis, per-security account name (~:AAPL~ suffix), balance assertion |
+| ~t/test_fr013_ofx_inv.pl~ | ~fr013_ofx_inv.ofx~, ~fr013_base.ldg~ | ~INVBUY~: deferred ticker lookup via ~$data->{check}~ + ~stop()~, commodity/cost, account fixup; ~INVPOS~ balance assertion |
+
+Also removed a stale ~print Dumper~ debug line from ~Ledger/OFX.pm~ (fired for all post-2025 dates).
+
+Not yet covered: OFX ~LEDGERNAME:~ in free-form header (depends on BUG-009),
+OFX ~<ACCTID>~ surfacing (depends on BUG-009).
 
 ** DONE Track separate insertion files for cleared, pending, and uncleared transactions :feature:
 :PROPERTIES:

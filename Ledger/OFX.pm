@@ -213,9 +213,6 @@ sub inv{
 	$tran{cost}=abs($tran{cost});
 	$tran{commodity}=$commodity||$arg->{secid}->{uniqueid};
     }
-    if ( $tran{date} > 1748754000 ) {
-        print Dumper(\%tran)
-    }
     my ($transaction, $posting)=&{$callback}(\%tran);
     if ($arg->{inv401ksource} && $posting){
         $posting->{account}.=':'.$arg->{inv401ksource}

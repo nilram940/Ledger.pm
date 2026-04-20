@@ -1,0 +1,35 @@
+{
+  "accounts": [
+    {
+      "account_id": "checking_001",
+      "name": "My Checking Account",
+      "official_name": "Premium Checking Account",
+      "ledger_name": "My Checking",
+      "type": "depository",
+      "subtype": "checking",
+      "balances": {
+        "current": 994.50
+      }
+    }
+  ],
+  "transactions": [
+    {
+      "account_id": "checking_001",
+      "amount": 5.50,
+      "merchant_name": "Coffee Shop",
+      "transaction_id": "plaid_001",
+      "pending": false,
+      "date": "2026-02-05"
+    },
+    {
+      "account_id": "checking_001",
+      "amount": 20.00,
+      "name": "Grocery Store",
+      "transaction_id": "plaid_002",
+      "pending": true,
+      "date": "2026-02-10"
+    }
+  ],
+  "securities": [],
+  "investment_transactions": []
+}
