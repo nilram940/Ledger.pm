@@ -1099,3 +1099,41 @@ Cons:
 - The current library deliberately minimises data loops.  Introducing an
   intermediate serialisation step adds latency and memory overhead, and moves
   the data further from the source format during debugging.
+
+** TODO Add test coverage for OFX and Plaid/JSON importers             :feature:
+:PROPERTIES:
+:ID: FR-013
+:END:
+
+The existing test suite covers CSV import, transfer matching, and in-place
+editing, but neither ~Ledger::OFX~ nor ~Ledger::JSON::Plaid~ (or ~Teller~) have
+any automated tests.  These parsers handle real-world bank data with quirks
+(free-form OFX headers, Plaid account-object routing, Teller field layout) that
+are easy to break silently.
+
+*** OFX (~Ledger::OFX~)
+
+- Fixture: a minimal ~.ofx~ / ~.qfx~ file representative of a real institution
+  (scrubbed amounts and IDs).
+- Cases to cover: basic transaction parse, multi-transaction file, free-form
+  header block (including a ~LEDGERNAME:~ line once BUG-009 is implemented),
+  and ~<ACCTID>~ extraction.
+
+*** Plaid (~Ledger::JSON::Plaid~)
+
+- Fixture: a representative Plaid JSON export (scrubbed), covering both
+  depository and investment account types.
+- Cases to cover: basic transaction parse, ~ledger_name~ override injection
+  (the pattern used by ~getplaid3.pl~), and investment transaction handling.
+
+*** Teller (~Ledger::JSON::Teller~)
+
+- Fixture: a representative Teller JSON export (scrubbed).
+- Cases to cover: basic transaction parse and account routing.
+
+*** Approach
+
+Each test should follow the existing pattern: copy fixture to a temp directory,
+run the parser, assert on the resulting transaction list (payee, amount, date,
+account).  Integration with ~fromStmt~ can be tested end-to-end using a minimal
+ledger file (no existing transactions needed for parse-only tests).
