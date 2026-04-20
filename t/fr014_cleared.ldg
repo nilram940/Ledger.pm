@@ -1,0 +1,5 @@
+; FR-014 multi-file fixture: cleared sub-file.
+
+2026/01/10 * Alpha
+    Assets:Checking  -$10.00  ; ID: MF-A
+    Expenses:Misc

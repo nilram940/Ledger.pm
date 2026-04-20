@@ -153,9 +153,8 @@ sub fromStmt{
 	}
     };
 
-    unless ($self->{ofxfile}){
-	$self->{ofxfile}=($self->getTransactions('cleared'))[-1]->{file};
-	$self->getofxpos;
+    unless (exists $self->{cleared_file}){
+	$self->getinsertionpoints;
     }
 
     if ($stmt=~/.[oq]fx$/i){
@@ -235,7 +234,7 @@ sub addStmtTran{
     my $transaction=new Ledger::Transaction 
 	($stmttrn->{date}, $stmttrn->{state} || "cleared", $stmttrn->{number}, 
 	 $payee);
-    $transaction->scheduleAppend($self->{ofxfile});
+    $transaction->scheduleAppend($self->insertionFileFor($transaction->{state}));
     
     my $posting=$transaction->addPosting($account, $stmttrn->{quantity}+0,
 					 $stmttrn->{commodity},
@@ -261,24 +260,54 @@ sub addStmtTran{
 
 }
 
-sub getofxpos{
-    my $self=shift;
-    
-    my @pending= (grep {$_-> {file} && 
-			    $_->{date} >0 &&
-			    $_->{file} eq $self->{ofxfile} &&
-			    $_->{state} ne 'cleared'} 
-		  @{$self->{transactions}});
+sub getinsertionpoints {
+    my $self = shift;
+    my @txns = grep { $_->{file} && $_->{date} > 0 } @{$self->{transactions}};
 
-    if (@pending){
-	my $pending=(sort {$a->{epos} <=> $b->{epos}} @pending)[0];
-	$pending->findtext;
-	$self->{ofxpos}=$pending->{bpos};
-    }else{
-	$self->{ofxpos}=(stat($self->{ofxfile}))[7];
+    # Last transaction of each state (determines which file owns each state)
+    my ($lc) = reverse grep { $_->{state} eq 'cleared' } @txns;
+    my ($lp) = reverse grep { $_->{state} eq 'pending' } @txns;
+    my ($lu) = reverse grep { $_->{state} eq ''        } @txns;
+
+    # File routing with fallbacks per FR-014 spec
+    $self->{cleared_file}   = $lc ? $lc->{file} : undef;
+    $self->{pending_file}   = $lp ? $lp->{file}
+                            : ($lu ? $lu->{file} : undef);
+    $self->{uncleared_file} = $lu ? $lu->{file} : $self->{cleared_file};
+
+    # Backward-compat aliases
+    $self->{ofxfile} = $self->{cleared_file};
+
+    # Insertion point within each file: bpos of the first later-state txn, else EOF
+    for my $target (qw(cleared pending uncleared)) {
+        my $file = $self->{"${target}_file"} or next;
+        my @in_file = grep { $_->{file} eq $file } @txns;
+        my @blockers =
+            $target eq 'cleared' ? grep { $_->{state} ne 'cleared' } @in_file :
+            $target eq 'pending' ? grep { $_->{state} eq ''        } @in_file :
+                                   ();  # uncleared always goes to EOF
+
+        if (@blockers) {
+            my $first = (sort { $a->{epos} <=> $b->{epos} } @blockers)[0];
+            $first->findtext;
+            $self->{"${target}_pos"} = $first->{bpos};
+        } else {
+            $self->{"${target}_pos"} = (stat($file))[7];
+        }
     }
-}		  
-		  
+
+    # Backward-compat alias
+    $self->{ofxpos} = $self->{cleared_pos};
+}
+
+sub insertionFileFor {
+    my ($self, $state) = @_;
+    return $self->{cleared_file}   if $state eq 'cleared';
+    return $self->{pending_file}   if $state eq 'pending';
+    return $self->{uncleared_file};
+}
+
+
 sub getTransactions{
     my $self=shift;
     my $filter=shift||'';
@@ -551,10 +580,10 @@ sub update{
 		    ($_->{file}=>1, $_->{edit}=>1):
 		    ($_->{edit}=>1))} @edit;
 
-    # Ensure the ofxfile is written even when @edit is empty (e.g. all
+    # Ensure the cleared_file is written even when @edit is empty (e.g. all
     # incoming transactions were deduplicated but balance entries remain).
-    $files{$self->{ofxfile}} = 1
-        if $self->{ofxfile} && %{$self->{balance}};
+    $files{$self->{cleared_file}} = 1
+        if $self->{cleared_file} && %{$self->{balance}};
 
     foreach $file (keys %files){
 	$self->update_file($file);
@@ -564,14 +593,29 @@ sub update{
 sub update_file{
     my $self=shift;
     my $file=shift;
-    my $ofx=($self->{ofxfile} && $self->{ofxfile} eq $file);
-    
+
+    # Sentinels for this file: pos => [states] for each state whose file matches
+    my %sentinels;
+    for my $state (qw(cleared pending uncleared)) {
+        my $sfile = $self->{"${state}_file"} // next;
+        next unless $sfile eq $file;
+        push @{$sentinels{$self->{"${state}_pos"}}}, $state;
+    }
+    my $is_cleared_file = ($self->{cleared_file} && $self->{cleared_file} eq $file);
+
     my @edit= (grep {$_->{edit} &&
-			 (($_->{file} && 
+			 (($_->{file} &&
 			   $_->{file} eq $file) ||
 			  $_->{edit} eq $file)}
 	       @{$self->{transactions}});
     my @append=grep {$_->{edit} eq $file && $_->{edit_pos}<0} @edit;
+
+    # Partition @append by state so each sentinel writes only its own transactions
+    my %append_for = (
+        cleared   => [grep { $_->{state} eq 'cleared' } @append],
+        pending   => [grep { $_->{state} eq 'pending' } @append],
+        uncleared => [grep { $_->{state} eq ''        } @append],
+    );
 
     my $posfilter=sub {
     	my $t=shift;
@@ -587,17 +631,24 @@ sub update_file{
     	}
     	%pos;
     };
-    
+
     my %posmap = map &{$posfilter}($_),  (@edit);
 
     my @balance_entries = sort { $a->{date} <=> $b->{date} }
                               map { values %$_ } (values %{$self->{balance}});
-    if ($ofx && (@append || @balance_entries)){
-        # Use //= so an existing in-place edit at ofxpos is not overwritten.
-        # If the matched pending transaction sits at ofxpos, the @append list
-        # falls through to the end-of-file block below instead.
-	$posmap{$self->{ofxpos}}//=-1;
+
+    # Register sentinels in posmap for each state that has transactions or balance entries.
+    # Use //= so an existing in-place edit at a sentinel position is not overwritten;
+    # the @append_for entries then fall through to the EOF block instead.
+    for my $spos (keys %sentinels) {
+        my $has_content = 0;
+        for my $state (@{$sentinels{$spos}}) {
+            $has_content = 1 if @{$append_for{$state}};
+            $has_content = 1 if $state eq 'cleared' && @balance_entries;
+        }
+        $posmap{$spos} //= -1 if $has_content;
     }
+
     my $lastpos=0;
     my $balance_written = 0;
     print STDERR "file=$file\n";
@@ -629,26 +680,28 @@ sub update_file{
                     ($transaction->{edit_pos} == $pos)) {
                     print $writeh "\n".$transaction->toString();
                 }
-                # When ofxpos was claimed by an in-place edit (blocking the -1
-                # sentinel), write balance entries immediately after the edit.
-                if ($ofx && $pos == $self->{ofxpos} && !$balance_written && @balance_entries) {
+                # When the cleared sentinel was claimed by an in-place edit,
+                # write balance entries immediately after the edit.
+                if ($is_cleared_file && $pos == $self->{cleared_pos}
+                    && !$balance_written && @balance_entries) {
                     print $writeh "\n; ".localtime."\n\n";
                     print $writeh join("\n", map { $_->toString } @balance_entries)."\n\n";
                     $balance_written = 1;
                 }
-            } elsif ($ofx) {
-                my @cleared   = grep { $_->{state} eq 'cleared'  } @append;
-                my @uncleared = grep { $_->{state} ne 'cleared'  } @append;
-                print $writeh "\n; ".localtime."\n\n" if @cleared || @uncleared;
-                print $writeh join("\n",
-                    (map { $_->toString }
-                        (sort { $a->{date} <=> $b->{date} } @cleared),
-                        @balance_entries,
-                        (sort { $a->{date} <=> $b->{date} } @uncleared)
-                    ))."\n\n";
-                @append=();
+            } elsif (exists $sentinels{$pos}) {
+                # Sentinel: write each state's transactions at this position
+                for my $state (@{$sentinels{$pos}}) {
+                    my @to_write = sort { $a->{date} <=> $b->{date} } @{$append_for{$state}};
+                    my @bal = ($state eq 'cleared') ? @balance_entries : ();
+                    next unless @to_write || @bal;
+                    print $writeh "\n; ".localtime."\n\n" if @to_write;
+                    print $writeh join("\n",
+                        (map { $_->toString } (@to_write, @bal))
+                    )."\n\n";
+                    $append_for{$state} = [];
+                    $balance_written = 1 if $state eq 'cleared';
+                }
                 $lastpos=$pos;
-                $balance_written = 1;
             }
         }
 
@@ -662,10 +715,11 @@ sub update_file{
         }
         close($readh);
 
-        my @remaining_bal = ($ofx && !$balance_written) ? @balance_entries : ();
-        if (@append || @remaining_bal) {
-            my @cleared   = grep { $_->{state} eq 'cleared'  } @append;
-            my @uncleared = grep { $_->{state} ne 'cleared'  } @append;
+        my @remaining_bal = ($is_cleared_file && !$balance_written) ? @balance_entries : ();
+        my @remaining_append = map { @{$append_for{$_}} } qw(cleared pending uncleared);
+        if (@remaining_append || @remaining_bal) {
+            my @cleared   = grep { $_->{state} eq 'cleared'  } @remaining_append;
+            my @uncleared = grep { $_->{state} ne 'cleared'  } @remaining_append;
             print $writeh '; '.localtime."\n\n" if @cleared || @uncleared;
             print $writeh join("\n",
                 (map { $_->toString }

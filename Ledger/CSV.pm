@@ -66,13 +66,17 @@ sub ledgerCSV{
     my %csv;
     my $transaction;
     my $id=-1;
+    my $last_file='';
     my $fd;
 
     open($fd, "-|", $csv) || die "Can't open $csv: $!";
-    
+
     while(my $row=$tcsv->getline($fd)){
 	@csv{@fields}=@$row;
-	if ($csv{id} != $id ){
+	# A new transaction starts when the xact.id changes OR when the source
+	# file changes (%(xact.id) resets per included file, so the same id can
+	# appear in two different sub-files).
+	if ($csv{id} != $id || $csv{file} ne $last_file){
 	    my $state;
 	    if ($csv{state} eq '*'){
 		$state='cleared';
@@ -116,6 +120,7 @@ sub ledgerCSV{
                             bless(\%neg, ref $posting));
         }
 	$id=$csv{id};
+	$last_file=$csv{file};
     }
     $tcsv->eof or die $tcsv->error_diag();
     close($fd);

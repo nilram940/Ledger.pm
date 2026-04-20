@@ -219,10 +219,10 @@ sub checkpending{
 	$candidate->{edit_end}=$self->{epos};
     }elsif($candidate->{file}){
 	if ($orig_state ne 'cleared' && $candidate->{state} eq 'cleared'){
-	    # Pending → cleared: delete from pending position, append at ofxpos
-	    # bpos in posmap causes update_file to skip the original bytes;
-	    # edit_pos=-1 puts the transaction in @append for insertion at ofxpos.
-	    $candidate->scheduleAppend($candidate->{file});
+	    # Pending → cleared: delete from pending position, append at cleared_pos.
+	    # Use the incoming statement transaction's edit file (cleared_file) when
+	    # available, so multi-file setups route to the right destination.
+	    $candidate->scheduleAppend($self->{edit} || $candidate->{file});
 	}else{
 	    # New import matched an existing uncleared — overwrite in the ledger
 	    $candidate->scheduleEdit();

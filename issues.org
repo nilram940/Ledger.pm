@@ -1226,9 +1226,12 @@ run the parser, assert on the resulting transaction list (payee, amount, date,
 account).  Integration with ~fromStmt~ can be tested end-to-end using a minimal
 ledger file (no existing transactions needed for parse-only tests).
 
-** TODO Track separate insertion files for cleared, pending, and uncleared transactions :feature:
+** DONE Track separate insertion files for cleared, pending, and uncleared transactions :feature:
 :PROPERTIES:
 :ID: FR-014
+:END:
+:LOGBOOK:
+- State "DONE" from "TODO" [2026-04-20]
 :END:
 
 Currently all imported transactions are inserted at a single ~ofxpos~
@@ -1301,3 +1304,33 @@ from today.
 
 This applies globally — ~fromStmt~, ~scheduleAppend~, and any other
 path that calls ~update()~.
+
+*** Implementation
+
+~getofxpos~ replaced by ~getinsertionpoints~, which computes three ~(file,
+pos)~ pairs (~cleared_file~/~cleared_pos~, ~pending_file~/~pending_pos~,
+~uncleared_file~/~uncleared_pos~).  ~ofxfile~/~ofxpos~ remain as
+backward-compatible aliases for the cleared pair.
+
+~addStmtTran~ now calls ~insertionFileFor($state)~ to select the target
+file before scheduling an append, rather than always using ~ofxfile~.
+
+~update_file~ replaced the single ~$ofx~/~ofxpos~ sentinel with a
+~%sentinels~ hash (~pos => [states]~).  Each sentinel writes only its
+own state's ~@append~ transactions; balance entries go at the cleared
+sentinel.  Multiple states can share the same sentinel position (e.g.
+single-file setup) and are all handled in one pass.
+
+~checkpending~'s pending→cleared branch changed from
+~scheduleAppend($candidate->{file})~ to
+~scheduleAppend($self->{edit} || $candidate->{file})~ so the moved
+transaction targets the cleared file in multi-file setups.
+
+A pre-existing bug in ~ledgerCSV~ was fixed as a prerequisite:
+~%(xact.id)~ resets to 1 for each ~!include~ sub-file, so consecutive
+rows from different files with the same ID were merged into one
+transaction.  The boundary check now uses ~id != $last_id || file ne
+$last_file~.
+
+Covered by ~t/test_fr014.pl~ (34 assertions: single-file and
+multi-file scenarios).

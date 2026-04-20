@@ -1,0 +1,5 @@
+; FR-014 multi-file fixture: uncleared sub-file.
+
+2026/01/30 Gamma
+    Assets:Checking  -$30.00  ; ID: MF-C
+    Expenses:Misc

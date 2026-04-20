@@ -1,0 +1,5 @@
+; FR-014 multi-file fixture: pending sub-file.
+
+2026/01/20 ! Beta
+    Assets:Checking  -$20.00  ; ID: MF-B
+    Expenses:Misc

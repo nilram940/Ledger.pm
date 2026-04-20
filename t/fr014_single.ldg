@@ -1,0 +1,14 @@
+; FR-014 single-file fixture.
+; One cleared, one pending, one uncleared transaction in a single file.
+
+2026/01/10 * Alpha
+    Assets:Checking  -$10.00  ; ID: SF-A
+    Expenses:Misc
+
+2026/01/20 ! Beta
+    Assets:Checking  -$20.00  ; ID: SF-B
+    Expenses:Misc
+
+2026/01/30 Gamma
+    Assets:Checking  -$30.00  ; ID: SF-C
+    Expenses:Misc
