@@ -644,6 +644,44 @@ transactions; CSV almost certainly does not.  A ~pending_snapshot =>
 1~ option to ~fromStmt~ (or inferred from the ~.json~ extension) would
 gate the scan.
 
+** FIXED Date comment written even when no transactions are appended  :bug:
+:PROPERTIES:
+:ID: BUG-014
+:END:
+:LOGBOOK:
+- State "FIXED" from "TODO" [2026-04-20]
+:END:
+
+~update_file~ writes a ~; <localtime>~ separator comment in three places.
+Two of those places fire even when ~@append~ is empty — i.e. when only
+balance assertions (no transactions) are being written at ~ofxpos~:
+
+1. The ~elsif ($ofx)~ block (processes the ~-1~ sentinel at ~ofxpos~) writes
+   the comment unconditionally before printing ~@balance_entries~.
+2. The EOF block writes the comment when ~@remaining_bal~ is non-empty,
+   even if ~@append~ is empty.
+
+The comment is intended to mark a batch of newly-imported transactions.
+Writing it without any transactions pollutes the file — specifically the
+uncleared section that starts at ~ofxpos~ — and can misplace balance
+assertions relative to pending transactions, causing balance errors.
+
+*** Fix
+
+Make the ~; <localtime>~ line conditional on ~@cleared || @uncleared~
+being non-empty in both blocks:
+
+#+begin_src perl
+# elsif ($ofx) block:
+print $writeh "\n; ".localtime."\n\n" if @cleared || @uncleared;
+
+# EOF block:
+print $writeh '; '.localtime."\n\n" if @cleared || @uncleared;
+#+end_src
+
+The balance entries are still written; they just don't get a spurious
+date comment when no transactions accompany them.
+
 * Feature Requests
 
 ** DONE Add edit-scheduling methods to Transaction                 :feature:

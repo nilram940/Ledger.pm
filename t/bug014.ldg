@@ -1,0 +1,16 @@
+; BUG-014 regression: date comment written even when no new transactions appended.
+; A statement whose transactions are all deduplicated but which includes a balance
+; assertion must NOT produce a "; Mon Apr..." date comment in the file.
+;
+; Setup: one cleared transaction (with ID so the CSV import deduplicates it) and
+; one pending transaction (so ofxpos is set to a mid-file position rather than EOF).
+; The balance assertion should land at ofxpos — before the pending transaction —
+; without a preceding date comment.
+
+2026/01/15 * Coffee Shop
+    Assets:Checking                    -$5.00  ; ID: C-CHK-001
+    Expenses:Dining
+
+2026/01/20 ! Pending Purchase
+    Assets:Checking                   -$25.00
+    Expenses:Shopping

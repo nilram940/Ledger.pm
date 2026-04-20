@@ -639,7 +639,7 @@ sub update_file{
             } elsif ($ofx) {
                 my @cleared   = grep { $_->{state} eq 'cleared'  } @append;
                 my @uncleared = grep { $_->{state} ne 'cleared'  } @append;
-                print $writeh "\n; ".localtime."\n\n";
+                print $writeh "\n; ".localtime."\n\n" if @cleared || @uncleared;
                 print $writeh join("\n",
                     (map { $_->toString }
                         (sort { $a->{date} <=> $b->{date} } @cleared),
@@ -666,7 +666,7 @@ sub update_file{
         if (@append || @remaining_bal) {
             my @cleared   = grep { $_->{state} eq 'cleared'  } @append;
             my @uncleared = grep { $_->{state} ne 'cleared'  } @append;
-            print $writeh '; '.localtime."\n\n";
+            print $writeh '; '.localtime."\n\n" if @cleared || @uncleared;
             print $writeh join("\n",
                 (map { $_->toString }
                     (sort { $a->{date} <=> $b->{date} } @cleared),

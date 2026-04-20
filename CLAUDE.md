@@ -33,6 +33,7 @@ prints a one-line-per-test summary; on failure it re-prints the full output of f
 | `test_issue4.pl` | Issue 4a: pending→cleared not left in place; Issue 4b: CC import doesn't replace Checking split |
 | `test_issue5.pl` | Issue 5: pending transaction moved to cleared section (not overwritten in place) |
 | `test_bug011.pl` | BUG-011: balance assertion written even when `@append` is empty (all transactions deduplicated) |
+| `test_bug014.pl` | BUG-014: date comment not written when only balance entries added and `@append` is empty |
 
 ### Fixture files
 
@@ -45,6 +46,7 @@ Each test works on a copy of its fixtures in a temporary directory so originals 
 | `issue4b.ldg`, `issue4b-Visa.csv`, `issue4b-Checking.csv` | `test_issue4.pl` (4b) |
 | `issue5.ldg`, `issue5.csv` | `test_issue5.pl` |
 | `bug011.ldg`, `bug011.csv` | `test_bug011.pl` |
+| `bug014.ldg`, `bug014.csv` | `test_bug014.pl` |
 
 There is no `Makefile` or CI configuration.
 
