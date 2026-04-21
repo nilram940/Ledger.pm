@@ -594,9 +594,9 @@ The raw payee string from the statement is looked up directly.
 
 **2. Cached description match**
 ```perl
-$handlers{$account}{ $ledger->{desc}{$payee} }
+$handlers{$account}{ $ledger->{desc}{$account}{$payee} }
 ```
-If a prior import already mapped this raw payee to a canonical name (via the payee cache), that canonical name is tried as the key.
+If a prior import already mapped this raw payee to a canonical name for this specific account (via the payee cache), that canonical name is tried as the key.
 
 **3. First-word match**
 ```perl
@@ -650,10 +650,12 @@ Note that after the code ref returns, auto-categorization (`Transaction::balance
 When a statement transaction matches an existing ID in `$ledger->{id}`, it is a duplicate and skipped — but before returning, `addStmtTran` updates the payee description cache:
 
 ```perl
-$ledger->{desc}{$raw_payee} = $canonical_payee;
+$ledger->{desc}{$account}{$raw_payee} = $canonical_payee;
 ```
 
-This means that on subsequent imports, previously seen raw payees are automatically mapped to their canonical names even without an explicit handler entry. The cache is persisted across runs via `YAML::Tiny` when `update()` is called.
+This means that on subsequent imports, previously seen raw payees are automatically mapped to their canonical names on a per-account basis. Two accounts that share the same raw payee string (e.g. `PAYMENT THANK YOU` on both a Visa and an MC statement) each maintain independent mappings and will resolve to different canonical names. The cache is persisted across runs via `YAML::Tiny` when `update()` is called.
+
+Existing `desc.yaml` files in the old flat format (string values at the top level) are automatically detected on load and treated as a read-only `__global__` fallback. New entries are always written account-specifically; global entries are never reinforced, so the cache migrates naturally over subsequent imports.
 
 ---
 

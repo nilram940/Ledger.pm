@@ -1,0 +1,16 @@
+; BUG-015: training data for Bayesian transfer-destination prediction.
+; Three cleared Visa payment transactions, both sides using Equity:Transfers:Visa.
+; After loading, the classifier should associate "PAYMENT THANK YOU" on
+; Liabilities:Visa with Equity:Transfers:Visa as the destination.
+
+2026/01/05 * PAYMENT THANK YOU
+    Liabilities:Visa          $150.00  ; ID: V-PAY-001
+    Equity:Transfers:Visa
+
+2026/02/05 * PAYMENT THANK YOU
+    Liabilities:Visa          $200.00  ; ID: V-PAY-002
+    Equity:Transfers:Visa
+
+2026/03/05 * PAYMENT THANK YOU
+    Liabilities:Visa          $175.00  ; ID: V-PAY-003
+    Equity:Transfers:Visa

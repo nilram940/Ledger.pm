@@ -461,6 +461,189 @@ existing ~bpos~ entry in ~posmap~ causes ~update_file~ to skip the original byte
 effectively deleting the transaction from its pending position.
 Covered by ~t/test_issue5.pl~.
 
+** TODO Ambiguous payee string maps to wrong transfer account           :bug:
+:PROPERTIES:
+:ID: BUG-015
+:END:
+:LOGBOOK:
+- State "TODO" from "TODO" [2026-04-21] Two partial fixes landed; checking-side routing issue remains open (see below).
+:END:
+
+*** FIXED CC-side cosmetic fix: account-specific desc cache
+
+~$self->{desc}~ restructured from a flat ~{ raw_payee → canonical }~ map
+to ~{ account => { raw_payee → canonical } }~.  Two accounts that share
+the same raw payee string (e.g. ~PAYMENT THANK YOU~ on both Visa and MC)
+now maintain independent mappings and resolve to different canonical
+names.
+
+- ~_read_payeetab~ detects old flat-format files and wraps them under a
+  ~__global__~ fallback key; new entries are always written
+  account-specifically.
+- The dedup write-back (~addStmtTran~ line 210) writes to both the
+  account-specific bucket and ~__global__~, so unambiguous payees
+  (e.g. ~Starbucks~) are still shared across accounts as a useful
+  default for first-sight lookups.
+- Lookup merges ~__global__~ + account-specific with account-specific
+  winning on collision.
+
+*** FIXED Bayesian classifier now predicts Equity:Transfers: destinations
+
+~gentable~ previously excluded all ~Equity:~ destinations from training.
+~Equity:Transfers:*~ entries are meaningful signal (they encode a learned
+~source_account + payee_tokens → transfer_tag~ relationship) so the
+exclusion was narrowed:
+
+#+begin_src perl
+# Before:
+next if $dest =~ /^Equity:/;
+# After:
+next if $dest =~ /^Equity:/ && $dest !~ /^Equity:Transfers:/;
+#+end_src
+
+~balance()~ in ~Transaction.pm~ gained a new branch before the existing
+Asset/Liability branch:
+
+#+begin_src perl
+if ($account =~ /^Equity:Transfers:(.+)/) {
+    $tag = $1;
+}
+#+end_src
+
+This means that once a card account has accumulated enough ~PAYMENT THANK
+YOU → Equity:Transfers:Visa~ training examples, subsequent payments are
+routed correctly by the classifier alone — no handler required.  Covered
+by ~t/test_bug015.pl~ (3 training transactions → classifier predicts
+~Equity:Transfers:Visa~ at ≥90% confidence for a new payment).
+
+*** TODO Checking-side routing remains open
+
+Both fixes above address the CC side.  On the checking side (e.g.
+~BOA CRDT CARD PMT~ appearing for both a Visa and an MC payment), the
+classifier cannot help: both transactions share the same source account
+(~Assets:Checking~) and identical payee tokens, so there is no signal
+to distinguish them.  The workarounds and fix options below still apply.
+
+When two different accounts share the same raw payee string on an
+importing account's statement, the desc cache can only remember one
+canonical name, so all matching transactions are routed to the same
+~Equity:Transfers:~ account regardless of which account they actually
+belong to.  Most commonly seen on checking statements (e.g.
+~BOA CRDT CARD PMT~ appearing for payments to both a Visa and an MC),
+but the underlying problem affects any statement source where the bank
+uses the same payee string for transactions that belong to different
+accounts.
+
+*** Concrete failure
+
+Accounts: ~Assets:Checking~, ~Liabilities:Visa~, ~Liabilities:MC~.
+
+Checking statement:
+#+begin_example
+2026/04/01  BOA CRDT CARD PMT   -$150.00  ; Visa payment
+2026/04/20  BOA CRDT CARD PMT   -$200.00  ; MC payment
+#+end_example
+
+Both rows have the same raw payee.  After the first import, ~desc.yaml~
+contains:
+#+begin_example
+BOA CRDT CARD PMT: BoA Visa
+#+end_example
+
+On the next run the MC payment is resolved via the desc cache to
+~BoA Visa~, which the handler routes to ~Equity:Transfers:BoA-Visa~.
+When the MC statement is then imported (with transfer tag ~BoA-MC~), the
+queue key ~BoA-MC-200.00~ has no match; two orphaned ~Equity:Transfers~
+stubs remain.
+
+The same collision appears on the credit card side: both the Visa and
+MC statements show a generic payment payee (e.g. ~PAYMENT THANK YOU~),
+so desc maps that string to whichever card was imported first and both
+payments end up with the same canonical name.  Transfer routing is
+unaffected on this side because the handler is keyed by account
+(~Visa => { ... }~, ~MC => { ... }~), not by payee, so the correct
+~Equity:Transfers:~ tag is assigned regardless.  The symptom here is
+cosmetic — wrong payee name in the ledger — rather than a broken
+transfer match.
+
+*** Root cause
+
+Two reinforcing mechanisms:
+
+1. *desc write-back on dedup* (~Ledger.pm~ line 210):
+   #+begin_src perl
+   $self->{desc}->{$payee} = $self->{id}->{$key};
+   #+end_src
+   When a Visa dedup occurs, ~$self->{id}->{key}~ holds the canonical
+   payee ~"BoA Visa"~ (loaded by ~ledgerCSV~ from the already-written
+   ledger entry).  This reinforces the mapping
+   ~"BOA CRDT CARD PMT" → "BoA Visa"~ in desc on every import that
+   sees an existing Visa payment.
+
+2. *desc is payee-string-only* — there is no date or account-name
+   context, so a single raw payee string can only map to one canonical
+   name regardless of which account the transaction actually belongs to.
+
+*** Workaround
+
+Write a code-ref handler that discriminates by day of month.  Transaction
+dates for distinct accounts are typically weeks apart and very stable
+month-to-month, making this far more reliable than amount-based
+discrimination (amounts fluctuate every statement):
+
+#+begin_src perl
+Checking => {
+    'BOA CRDT CARD PMT' => sub {
+        my $txn = shift;
+        my $day = (localtime($txn->{date}))[3];
+        return $ledger->transfer($txn,
+            $day <= 10 ? 'BoA-Visa' : 'BoA-MC');
+    },
+}
+#+end_src
+
+A simpler alternative that avoids per-account date thresholds: use a
+shared generic transfer tag on all sides (e.g. all use
+~transfer => 'BoA-CC'~).  The transfer matcher already validates by
+amount+date, so two transactions for different accounts whose dates
+differ by more than five days cannot falsely pair even if the amounts
+happen to match.  The collision window (same amount, within 5 days,
+for two different accounts) is effectively impossible given typical
+billing cycles.
+
+*** Fix options
+
+1. *Don't write desc for transfer-tagged payees*: when a handler
+   provides a ~transfer~ key, the resolved payee came from the handler
+   configuration, not from a true disambiguation of the raw bank string.
+   Suppress the desc write-back for these transactions.  Prevents
+   propagation but does not solve the ambiguous case without a handler.
+
+2. *Date-keyed desc entries*: allow ~desc.yaml~ values to be a hash
+   keyed by day-of-month range rather than a bare string, so the user
+   can explicitly configure:
+   #+begin_example
+   BOA CRDT CARD PMT:
+     "<= 10": BoA Visa
+     "> 10": BoA MC
+   #+end_example
+   Day-of-month thresholds are more stable than amount thresholds, but
+   still require per-user configuration and breaks if a payment date
+   drifts across the boundary.
+
+3. *Cross-tag transfer matching*: allow the transfer queue to match
+   entries across different tags when amount+date agree and one tag is a
+   prefix of another (e.g. ~BoA-CC~ matches ~BoA-Visa~).  Riskier —
+   could produce false matches in other scenarios.
+
+4. *Document the shared-tag pattern as the recommended approach*
+   (lowest risk): the checking-side handler uses a single generic tag
+   (~BoA-CC~); both credit card import scripts also use ~BoA-CC~.
+   Transfer matching works by amount+date within the shared pool.  Two
+   payments to different cards whose due dates are more than five days
+   apart cannot falsely pair, making same-amount collisions practically
+   impossible given typical billing cycles.
+
 ** TODO makeid collisions and account-name coupling                    :bug:
 :PROPERTIES:
 :ID: BUG-010
@@ -1374,3 +1557,18 @@ $last_file~.
 
 Covered by ~t/test_fr014.pl~ (34 assertions: single-file and
 multi-file scenarios).
+
+** WONTFIX Expose account name identified during fromStmt               :feature:
+:PROPERTIES:
+:ID: FR-018
+:END:
+
+~fromStmt~ derives the account name for each statement file internally
+(filename prefix for CSV/OFX, ~ledger_name~ field for Plaid JSON) and
+uses it as a dispatch key into ~%handlers~ and ~%csv~ config, but never
+returns it to the caller.
+
+Not needed: ~reconcile.pl~ (the motivating caller) accepts statement
+files as explicit arguments, so it already has the filenames and can
+apply the same prefix-stripping logic itself.  No change to ~fromStmt~
+required.

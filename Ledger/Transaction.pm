@@ -159,14 +159,16 @@ sub balance{
 	    'Expenses:Miscellaneous';
 	$info="INFO: UNKNOWN (0.00%)";
     }
-    if ($account=~/^Lia|^Ass/){
+    if ($account=~/^Equity:Transfers:(.+)/){
+        $tag=$1;
+    }elsif ($account=~/^Lia|^Ass/){
         if ($self->{postings}->[0]->{quantity}<0){
             $tag=$account
         }else{
             $tag=$self->{postings}->[0]->{account}
         }
         $tag=(split(/:/, $tag))[-1];
-    }else{ 
+    }else{
         $self->addPosting($account,undef,undef,undef,$info)
     }
     return $tag;

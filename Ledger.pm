@@ -51,8 +51,11 @@ sub new{
 sub _read_payeetab {
     my $file = shift;
     my $yaml = eval { YAML::Tiny->read($file) };
-    return $yaml->[0] if $yaml && ref $yaml->[0] eq 'HASH';
-    return Storable::retrieve($file) // {};
+    my $h = ($yaml && ref $yaml->[0] eq 'HASH') ? $yaml->[0]
+           : (Storable::retrieve($file) // {});
+    my ($first) = values %$h;
+    # Old flat format has string values; migrate to read-only __global__ bucket.
+    return defined($first) && !ref($first) ? { __global__ => $h } : $h;
 }
 
 sub getacctnum{
@@ -207,7 +210,10 @@ sub addStmtTran{
 
     
     if ($self->{id}->{$key}){
-	$self->{desc}->{$payee}=$self->{id}->{$key};
+	$self->{desc}->{$account} //= {};
+	$self->{desc}->{$account}->{$payee}=$self->{id}->{$key};
+	$self->{desc}->{__global__} //= {};
+	$self->{desc}->{__global__}->{$payee}=$self->{id}->{$key};
 	return;
     }
     $self->{id}->{$key}=$payee;
@@ -216,7 +222,8 @@ sub addStmtTran{
     $cleanpay=~s/\s+\*{3}.*$//;
         
     my $acct_handlers = $handlers->{$account} || {};
-    my $acct_desc     = $self->{desc}         || {};
+    my $acct_desc     = { %{$self->{desc}->{__global__} || {}},
+                          %{$self->{desc}->{$account}  || {}} };
 
     my $handler = $acct_handlers->{$payee}
                || $acct_handlers->{$acct_desc->{$payee} || ""}
@@ -461,8 +468,8 @@ sub gentable {
         my $dest   = $dest_p->{account} // '';
         my $note   = $dest_p->{note}    // '';
 
-        # Skip equity and transfer postings — not meaningful training signal
-        next if $dest =~ /^Equity:/;
+        # Skip equity postings except learned transfer destinations
+        next if $dest =~ /^Equity:/ && $dest !~ /^Equity:Transfers:/;
         # Skip balance assertion pseudo-postings
         next if $dest_p->{cost} && $dest_p->{cost} eq 'BAL';
         # Skip auto-categorised results — INFO: means the library was uncertain
