@@ -102,11 +102,18 @@ Implemented option 4 (LEDGERNAME: preprocessor approach):
   at the start of each ~parsefile~ call to prevent cross-file bleed).
 - ~stmttrn~ sets ~$tran{account} = $account~ when present; ~ledgerbal~ sets
   ~$balance{account} = $account~ when present.
+- Investment handlers (~inv~, ~invbal~, ~invpos~) also set account from
+  ~$account~ when present, so LEDGERNAME: applies to INVBUY/INVSELL
+  transactions and INVPOS/INVBAL balance assertions.  ~stop()~ subsequently
+  appends ~:TICKER~ to inv/invpos accounts (e.g. ~Assets:Brokerage:Fidelity:AAPL~).
 - ~addStmtTran~ and ~addStmtBal~ already use ~$stmttrn->{account} || $accdef~,
   so LEDGERNAME: overrides the filename-derived default with no further changes.
 
-Covered by ~t/test_bug009.pl~ (5 assertions: transaction account, balance
-assertion account, neither uses the filename-derived "BankStmt" prefix).
+Covered by:
+- ~t/test_bug009.pl~ (5 assertions: banking transaction and balance assertion
+  use LEDGERNAME account, not filename-derived "BankStmt" prefix).
+- ~t/test_bug009_inv.pl~ (4 assertions: INVBUY account = ~Assets:Brokerage:Fidelity:AAPL~,
+  INVPOS balance line uses same account, neither uses filename-derived "BrokerStmt").
 
 ** INVESTIGATING Constructor arguments are poorly integrated             :bug:
 :PROPERTIES:

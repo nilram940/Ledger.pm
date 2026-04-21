@@ -219,6 +219,7 @@ sub inv{
 	$tran{cost}=abs($tran{cost});
 	$tran{commodity}=$commodity||$arg->{secid}->{uniqueid};
     }
+    $tran{account} = $account if $account;
     my ($transaction, $posting)=&{$callback}(\%tran);
     if ($arg->{inv401ksource} && $posting){
         $posting->{account}.=':'.$arg->{inv401ksource}
@@ -266,8 +267,9 @@ sub invbal{
     #return if $balance{quantity}==0;
     $balance{date}=&getdate($arg->{ballist}->[0]->{bal}->{dtasof});
     $balance{cost}='BAL';
+    $balance{account} = $account if $account;
     &{$callback}(\%balance) if $data->{transactions};
-   
+
 }
 
 sub invpos{
@@ -278,6 +280,7 @@ sub invpos{
     @balance{qw(date quantity cost)}=(&getdate($arg->{dtpriceasof}),
 				      $arg->{units}, 'BAL');
     $balance{commodity}=$arg->{secid}->{uniqueid};
+    $balance{account} = $account if $account;
 
     if ($data->{transactions}){
 	my ($transaction,$posting)=&{$callback}(\%balance);

@@ -36,6 +36,7 @@ prints a one-line-per-test summary; on failure it re-prints the full output of f
 | `test_bug014.pl` | BUG-014: date comment not written when only balance entries added and `@append` is empty |
 | `test_fr013_ofx.pl` | FR-013: OFX parser — 2 transactions (payee, qty, date, check number), LEDGERBAL balance assertion |
 | `test_fr013_ofx_inv.pl` | FR-013: OFX investment — INVBUY with deferred ticker fixup via `stop()`, INVPOS balance assertion |
+| `test_bug009_inv.pl` | BUG-009 (investment): LEDGERNAME overrides filename for INVBUY account and INVPOS balance; `stop()` appends `:TICKER` |
 | `test_fr013_plaid.pl` | FR-013: Plaid JSON — `ledger_name` override, cleared vs pending state, negated amounts, balance assertion |
 | `test_fr013_plaid_inv.pl` | FR-013: Plaid investment — `addinvestments`, commodity/cost, per-security account name, balance assertion |
 | `test_fr013_teller.pl` | FR-013: Teller JSON — institution+name account derivation, depository sign, balance assertion |
@@ -57,6 +58,7 @@ Each test works on a copy of its fixtures in a temporary directory so originals 
 | `fr013_base.ldg` | all `test_fr013_*.pl` tests (shared minimal ledger) |
 | `fr013.ofx` | `test_fr013_ofx.pl` |
 | `fr013_ofx_inv.ofx` | `test_fr013_ofx_inv.pl` |
+| `fr013_ofx_inv_named.ofx` | `test_bug009_inv.pl` |
 | `fr013_plaid.json` | `test_fr013_plaid.pl` |
 | `fr013_plaid_inv.json` | `test_fr013_plaid_inv.pl` |
 | `fr013_teller.json` | `test_fr013_teller.pl` |
