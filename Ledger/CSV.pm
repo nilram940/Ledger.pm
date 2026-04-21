@@ -10,13 +10,34 @@ sub parsefile{
     my $csvargs=$args->{csv_args}||{};
     my $tcsv=Text::CSV->new($csvargs);
     my $fd;
-    my @trlist;
-    
+
     if (ref $file){
 	$fd=$file;
     }else{
 	open($fd, "<", $file) || die "Can't open $file: $!";
     }
+
+    my $ledgername;
+    if (!ref $file) {
+        my $pos = tell($fd);
+        local $/ = "\n";
+        my $first = <$fd>;
+        if (defined $first && $first =~ /^#LedgerName:\s*(.+?)\s*$/) {
+            $ledgername = $1;
+        } else {
+            seek($fd, $pos, 0);
+        }
+    }
+
+    if ($args->{header_map}) {
+        my $header = $tcsv->getline($fd);
+        my %col_to_field = reverse %{$args->{header_map}};
+        $fields = [ map { $col_to_field{$_} // '' } @$header ];
+    }
+
+    my $rb_field = $args->{running_balance};
+    my ($rb_val, $rb_date);
+
     while(1){
 	last if $tcsv->eof;
         my %csv;
@@ -28,18 +49,25 @@ sub parsefile{
 	next unless $csv{date};
 	$csv{cost}='BAL' if $csv{quantity}=~s/^\s*=\s*//;
 	$csv{quantity}=~s/^(-?)[^-\d]*\$/$1/;
-	#next unless $csv{quantity}=~/^\d/;
 	$csv{quantity}=-$csv{quantity} if $args->{reverse} && !$csv{cost};
 	$csv{payee}=~s/^\s*//;
 	$csv{payee}=~s/~.*$//;
+        $csv{account} ||= $ledgername if $ledgername;
         &{$args->{process}}(\%csv) if $args->{process};
+        if ($rb_field && defined $csv{$rb_field} && length $csv{$rb_field}
+            && ($csv{state}//'cleared') ne 'pending') {
+            ($rb_val = $csv{$rb_field}) =~ s/^(-?)[^-\d]*\$/$1/;
+            $rb_date = $csv{date};
+        }
 	&{$callback}(\%csv);
-	#push @trlist,{%csv};
     }
+
+    &{$callback}({cost=>'BAL', quantity=>$rb_val+0, date=>$rb_date})
+        if defined $rb_val;
 
     $tcsv->eof or $tcsv->error_diag();
     close($fd) unless $fd eq $file;
-    return 1; #(transactions=>\@trlist);
+    return 1;
 }
 
 sub ledgerCSV{

@@ -3,9 +3,12 @@
 
 * Bugs
 
-** TODO Account identification via filename is fragile              :bug:
+** FIXED Account identification via filename is fragile              :bug:
 :PROPERTIES:
 :ID: BUG-009
+:END:
+:LOGBOOK:
+- State "FIXED" from "TODO" [2026-04-21]
 :END:
 
 Both importers derive the account name from the statement filename:
@@ -88,6 +91,22 @@ long-term fix for OFX but requires surfacing ~acctid~ from the OFX parser to
    special-case logic in ~fromStmt~.  The preprocessor can be a standalone
    script (one per institution, or a generic one driven by a YAML mapping) and
    keeps the injection *outside* Ledger.pm entirely.
+
+*** Implementation
+
+Implemented option 4 (LEDGERNAME: preprocessor approach):
+
+- ~Ledger::OFX::parsefile~ scans the free-form header block (before the first ~<~)
+  for a ~LEDGERNAME:~ line using ~/^LEDGERNAME:\s*(.+?)\s*$/m~.
+- The parsed account name is stored in ~$account~ (module-level, reset to ~undef~
+  at the start of each ~parsefile~ call to prevent cross-file bleed).
+- ~stmttrn~ sets ~$tran{account} = $account~ when present; ~ledgerbal~ sets
+  ~$balance{account} = $account~ when present.
+- ~addStmtTran~ and ~addStmtBal~ already use ~$stmttrn->{account} || $accdef~,
+  so LEDGERNAME: overrides the filename-derived default with no further changes.
+
+Covered by ~t/test_bug009.pl~ (5 assertions: transaction account, balance
+assertion account, neither uses the filename-derived "BankStmt" prefix).
 
 ** INVESTIGATING Constructor arguments are poorly integrated             :bug:
 :PROPERTIES:
@@ -1446,8 +1465,10 @@ Three test files and four fixtures added:
 
 Also removed a stale ~print Dumper~ debug line from ~Ledger/OFX.pm~ (fired for all post-2025 dates).
 
-Not yet covered: OFX ~LEDGERNAME:~ in free-form header (depends on BUG-009),
-OFX ~<ACCTID>~ surfacing (depends on BUG-009).
+OFX ~LEDGERNAME:~ coverage added in ~t/test_bug009.pl~ (BUG-009 fix).
+~<ACCTID>~ surfacing is not implemented (OFX file still needs a LEDGERNAME: header
+injected by a preprocessor; the raw acctid is stored in ~$data->{acctid}~ but never
+used for account routing).
 
 ** DONE Track separate insertion files for cleared, pending, and uncleared transactions :feature:
 :PROPERTIES:
@@ -1572,3 +1593,241 @@ Not needed: ~reconcile.pl~ (the motivating caller) accepts statement
 files as explicit arguments, so it already has the filenames and can
 apply the same prefix-stripping logic itself.  No change to ~fromStmt~
 required.
+
+** DONE Multi-account brokerage CSV import (Fidelity-style)          :feature:
+:PROPERTIES:
+:ID: FR-015
+:END:
+:LOGBOOK:
+- State "DONE" from "TODO" [2026-04-21]
+:END:
+
+Fidelity brokerage CSV exports contain transactions from multiple accounts
+in a single file.  The header is:
+
+#+begin_example
+Run Date,Account,Account Number,Action,Symbol,Description,Type,Price ($),Quantity,Commission ($),Fees ($),Accrued Interest ($),Amount ($),Settlement Date
+#+end_example
+
+Key differences from the CSV sources already supported:
+
+- *Multi-account*: the ~Account~ and ~Account Number~ columns identify which
+  brokerage account each row belongs to.  The current ~fromStmt~ model dispatches
+  on a single account derived from the filename; a multi-account file requires
+  per-row account resolution.
+- *Investment actions*: ~Action~ (e.g. ~Buy~, ~Sell~, ~Dividend~), ~Symbol~,
+  ~Quantity~, and ~Price~ map naturally to the commodity/cost/quantity fields
+  already used by ~Ledger::OFX~ investment transactions.
+- *No balance column*: the file does not provide running or end-of-period
+  balance data, so no balance assertion can be generated.
+
+*** Account naming — existing patterns to reuse
+
+OFX.pm already handles both forms of investment account-name augmentation:
+
+1. *Commodity suffix* (~OFX::stop~, line 160):
+   #+begin_src perl
+   $post->{account}.=":$commodity"
+   #+end_src
+   Called after all transactions are parsed, once the ticker is known from
+   ~<SECINFO>~.  Appends the resolved ticker symbol (e.g. ~:AAPL~) to the
+   posting account.  The Fidelity CSV provides ~Symbol~ inline on each row, so
+   the suffix can be appended immediately in the ~process~ callback rather than
+   deferred to a ~stop()~-equivalent.
+
+2. *401k source suffix* (~OFX::inv~, line 223):
+   #+begin_src perl
+   $posting->{account}.=':'.$arg->{inv401ksource}
+   #+end_src
+   Appends the OFX ~INVTRAN/INV401KSOURCE~ value (typically ~PRETAX~, ~MATCH~,
+   ~AFTERTAX~, ~ROLLOVER~) to the posting account after the callback returns.
+   The Fidelity ~Type~ column carries equivalent information for 401k accounts;
+   the ~process~ callback should append it to ~$tran{account}~ when non-empty.
+
+Plaid's ~getaccounts~ (Plaid.pm lines 44–55) builds the same ~:TICKER~ suffix at
+account-object construction time rather than post-callback; either approach works
+since ~addStmtTran~ reads ~$stmttrn->{account}~ before creating the posting.
+
+*** Implementation sketch
+
+- Parse the file in a single pass with ~Ledger::CSV::parsefile~.  The ~process~
+  callback (already supported) handles per-row logic:
+  - Resolve ~Account Number~ to a full ledger account via ~accounttab~ or a
+    YAML mapping; set ~$tran{account}~.
+  - Append ~:$symbol~ from the ~Symbol~ column when non-empty (commodity
+    positions), mirroring ~OFX::stop~.
+  - Append ~:$type~ from the ~Type~ column when it indicates a 401k source
+    (~PRETAX~, ~MATCH~, etc.), mirroring ~OFX::inv~ line 223.
+  - Map ~Action~ to ~quantity~/~cost~/~commodity~: ~Buy~ → units + cost basis;
+    ~Sell~ → negative units; ~Dividend~ → cash amount; etc.
+- ~addStmtTran~ requires no changes: it already uses ~$stmttrn->{account}~ and
+  handles commodity/cost fields.
+- No balance assertion is generated (the file has no position totals).
+
+*** Implementation
+
+Uses ~header_map~ (FR-016) for column-name-driven field mapping and a ~process~
+callback closure for all Fidelity-specific logic.  No changes to ~CSV.pm~ or
+~Posting.pm~.
+
+Key column mappings: ~Run Date~ → ~date~, ~Account Number~ → ~account_number~,
+~Action~ → ~action~, ~Symbol~ → ~symbol~, ~Description~ → ~payee~, ~Type~ →
+~contrib_type~, ~Price ($)~ → ~price_col~, ~Quantity~ → ~shares~, ~Amount ($)~
+→ ~quantity~.
+
+The ~process~ callback:
+- Resolves ~account_number~ via a user-supplied ~%account_map~ closure
+- For buy/sell actions: sets ~cost = abs(Amount)~ (falls back to ~Price × Quantity~
+  if Amount is blank), ~quantity = shares~, ~commodity = Symbol~, appends
+  ~:Symbol~ to account
+- Appends ~:Type~ to account when ~contrib_type~ is set (401k ~PRETAX~/~MATCH~/etc.)
+- Cash actions (dividend, interest): passes ~quantity~ (Amount) through unchanged
+
+Output format: ~2 FXAIX @@ $250.00~ — total cost via existing ~cost~ field in
+~Posting.pm~.
+
+A ready-to-use import script is provided at ~scripts/fidelity.pl~.  It wraps
+both the Fidelity brokerage handler (with an ~%FIDELITY_ACCOUNTS~ map to
+configure) and the HSA handler (account read from ~#LedgerName:~ in the CSV
+file).  Usage: ~perl fidelity.pl Fidelity-2026-03.csv HSA-2026-03.csv~.
+
+Covered by ~t/test_fr015.pl~ (12 assertions: buy with account/qty/cost/commodity,
+dividend with no symbol suffix, 401k contribution with PRETAX suffix).
+
+** DONE HSA/benefit plan CSV import with running balance             :feature:
+:PROPERTIES:
+:ID: FR-016
+:END:
+:LOGBOOK:
+- State "DONE" from "TODO" [2026-04-21]
+:END:
+
+HSA (health savings account) and employee-benefit plan statements are
+often exported as Excel files with this column layout:
+
+#+begin_example
+Transaction Date,Transaction Type,Claimant,Description,Plan,Date of Service,Amount,Status,Available Balance
+#+end_example
+
+Two distinct sub-features:
+
+*** Excel-to-CSV conversion script
+
+The source is an ~.xlsx~ file, not a plain CSV.  A small conversion
+script is needed before ~Ledger::CSV::parsefile~ can consume it.
+Options:
+- ~ssconvert~ (part of Gnumeric), ~xlsx2csv~ (Python), or a small Perl
+  script using ~Spreadsheet::ParseXLSX~.
+- The conversion step can be a standalone preprocessor (analogous to
+  the OFX LEDGERNAME: injector) so Ledger.pm itself never sees the
+  binary format.
+
+*** Running balance → balance assertion
+
+The ~Available Balance~ column is a running balance after each transaction.
+Two approaches, each with different verification granularity:
+
+**** Option A: end-of-statement BAL (existing pattern)
+
+~Ledger::JSON::Teller~ already implements this: as each cleared transaction
+is processed, ~$account->{balance}~ is updated from ~running_balance~
+(Teller.pm lines 96-98), and ~addbalance~ emits the final value as a
+~cost=BAL~ callback after all transactions are done — producing a separate
+balance transaction at the end of the import block.
+
+The CSV equivalent: track the ~Available Balance~ value from the last
+cleared row in the ~process~ callback, then emit a synthetic
+~{cost=>'BAL', quantity=>$balance, date=>$last_date}~ row after the loop.
+No pipeline changes needed.
+
+**** Option B: per-transaction inline assertion (richer)
+
+Ledger-CLI supports an inline balance assertion on a posting:
+
+#+begin_example
+2026/03/10 * Pharmacy
+    Expenses:Medical               $-100.00 = $450.00
+    Assets:HSA
+#+end_example
+
+This verifies the ~Assets:HSA~ running balance at every transaction, not
+just at the end of the statement.  ~Posting.pm~ currently handles ~BAL~
+(virtual account form) and ~ASSERT~ (assertion only, no amount), but not
+the combined amount + assertion form.
+
+Required change to ~Posting.pm~: add an ~assert~ field; extend ~toString~
+to append ~= $x.xx~ after the amount when set:
+
+#+begin_src perl
+# constructor: @{$self}{qw(account quantity commodity cost note assert)}=@_;
+# toString, after sprintf('$%0.2f', $self->{quantity}):
+$str .= sprintf(' = $%0.2f', $self->{assert}) if defined $self->{assert};
+#+end_src
+
+~addStmtTran~ passes ~$stmttrn->{assert}~ through to ~addPosting~.  The
+HSA ~process~ callback sets ~$tran{assert} = $csv{available_balance}~ on
+each cleared row.
+
+The ~Status~ column likely maps to transaction state
+(~cleared~ / ~pending~); exact values depend on the institution.
+
+*** Notes
+
+The ~Claimant~, ~Plan~, and ~Date of Service~ fields are HSA-specific
+metadata with no direct ledger equivalent; they could be stored as
+transaction notes if useful for later reconciliation.
+
+*** Implementation (Option A)
+
+Two new keys added to ~Ledger::CSV::parsefile~ ~$args~:
+
+- ~header_map~ (hashref ~field_name => 'Column Header'~): reads the first
+  CSV row as column headers and builds the positional field array
+  dynamically.  Replaces the need for a hardcoded ~fields~ array when column
+  order may vary.
+
+- ~running_balance~ (string: name of the field holding the running balance):
+  after the ~process~ callback runs (so ~state~ is set), updates a
+  tracked ~($rb_val, $rb_date)~ pair for every non-pending row.  After the
+  loop, emits ~{cost=>'BAL', quantity=>$rb_val, date=>$rb_date}~ via the
+  existing ~addStmtBal~ path.
+
+Example config:
+
+#+begin_src perl
+HSA => {
+    header_map => {
+        date              => 'Transaction Date',
+        payee             => 'Description',
+        quantity          => 'Amount',
+        status            => 'Status',
+        available_balance => 'Available Balance',
+    },
+    running_balance => 'available_balance',
+    process => sub {
+        my $csv = shift;
+        $csv->{state} = ($csv->{status} =~ /pending/i) ? 'pending' : 'cleared';
+    },
+}
+#+end_src
+
+A third key is also supported:
+
+- ~#LedgerName:~ directive in CSV file: if the first line of a CSV file
+  matches ~^#LedgerName:\s*(.+?)\s*$~, the value is captured as ~$ledgername~
+  and set on every row as ~$csv{account} ||= $ledgername~, before the ~process~
+  callback runs.  This decouples the ledger account name (a full path like
+  ~Assets:HSA~) from the filename prefix (the config-dispatch key, e.g. ~HSA~).
+  The CSV is otherwise parsed normally; the directive line is consumed and not
+  passed to Text::CSV.  Mirrors the OFX ~LEDGERNAME:~ mechanism (BUG-009).
+
+#+begin_example
+#LedgerName: Assets:HSA
+Transaction Date,Transaction Type,...
+03/05/2026,...
+#+end_example
+
+Covered by ~t/test_fr016.pl~ (12 assertions: two cleared transactions,
+one pending transaction, balance assertion uses last-cleared value $395.00,
+pending balance $345.00 is absent).  The ~process~ callback in that test does
+not set ~$csv->{account}~; it comes entirely from the ~#LedgerName:~ directive.

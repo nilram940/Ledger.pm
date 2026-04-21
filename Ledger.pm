@@ -254,7 +254,6 @@ sub addStmtTran{
 	}
     }
     if ($transaction) {
-    #    if ($transaction && $transaction->{date} > time-90*24*3600 && $transaction->{date}> 1709877600){
         $posting->{pendid}=$stmttrn->{pendid} if $stmttrn->{pendid};
         my $tag=$transaction->balance($self->{table},
                                       $self->getTransactions('uncleared'));

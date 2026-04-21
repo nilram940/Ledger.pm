@@ -28,18 +28,23 @@ my $xml;
 my @xml;
 my $data;
 my $callback;
+my $account;
 
 sub parsefile{
     my $file=shift;
     $callback=shift;
+    $account = undef;
     local ($/);
-    open (my $ofxh, '<', $file) || die "Can't open $file: $!"; 
+    open (my $ofxh, '<', $file) || die "Can't open $file: $!";
     my $body=(<$ofxh>);
     close($ofxh);
     if ($body !~/OFXHEADER/){
 	print STDERR "$file is not an OFX file\n";
 	return "";
     }
+    if ($body =~/^LEDGERNAME:\s*(.+?)\s*$/m){
+        $account=$1;
+    };
     return &parse($body);
 }
 
@@ -182,6 +187,7 @@ sub stmttrn{
     }
 
     $tran{date}=&getdate($arg->{dtposted});
+    $tran{account}=$account;
     if ($arg->{memo} && $arg->{memo} !~/^\d+$/ &&
 	$arg->{memo} !~/^\w+$/){
 	$tran{payee}=$arg->{memo};
@@ -248,8 +254,9 @@ sub ledgerbal{
     my %balance;
     @balance{qw(date quantity cost)}=(&getdate($arg->{dtasof}),
 				      $arg->{balamt}, 'BAL');
+    $balance{account}=$account if $account;
     &{$callback}(\%balance) if $data->{transactions};
-   
+
 }
 
 sub invbal{
