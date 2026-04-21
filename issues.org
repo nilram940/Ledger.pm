@@ -1838,3 +1838,86 @@ Covered by ~t/test_fr016.pl~ (12 assertions: two cleared transactions,
 one pending transaction, balance assertion uses last-cleared value $395.00,
 pending balance $345.00 is absent).  The ~process~ callback in that test does
 not set ~$csv->{account}~; it comes entirely from the ~#LedgerName:~ directive.
+
+** TODO CSV format auto-detection via header fingerprinting            :feature:
+:PROPERTIES:
+:ID: FR-019
+:END:
+
+The current dispatch path in ~fromStmt~ requires the CSV filename to follow
+the ~AccountPrefix-date.csv~ convention so that the stripped prefix matches
+a key in the ~%csv~ config map:
+
+#+begin_src perl
+my $account = $stmt;
+$account =~ s/-.*//;       # "Checking-2026-03.csv" → "Checking"
+$account =~ s!.*/!!;
+$account =~ s/\..*//;
+# ...
+&Ledger::CSV::parsefile($stmt, $csv->{$account}, $callback);
+#+end_src
+
+This conflates two independent roles: the config-dispatch key and the
+default ledger account name.  ~#LedgerName:~ (FR-016) decouples the
+account name, but the config key still depends on the filename.
+
+*** Goal
+
+Allow a CSV file to be processed correctly even when its name does not
+embed the config key — for example, a download saved as
+~export-2026-03.csv~ or a file whose institution name differs from the
+config key.
+
+*** Proposed approach: fingerprint key in config entries
+
+Add an optional ~fingerprint~ key to each ~%csv~ config entry.  Its value
+is the exact header line (or a regex) expected for that format.
+~parsefile~ reads the first non-directive line of the file; if it matches
+any registered fingerprint, that config entry is used regardless of the
+filename prefix:
+
+#+begin_src perl
+# Caller config:
+Fidelity => {
+    fingerprint   => qr/^Run Date,Account,Account Number,Action/,
+    header_map    => { ... },
+    process       => sub { ... },
+},
+HSA => {
+    fingerprint   => qr/^Transaction Date,Transaction Type,Claimant/,
+    header_map    => { ... },
+    running_balance => 'available_balance',
+    process       => sub { ... },
+},
+#+end_src
+
+Detection logic added to ~fromStmt~ (or ~parsefile~):
+
+1. If ~$csv->{$account}~ exists (filename-prefix match), use it as today.
+2. Otherwise, peek at the first header line of the file and scan all
+   registered config entries for a ~fingerprint~ match.
+3. If a fingerprint matches, use that config entry.
+4. If no match, die or warn with a clear message (unknown format).
+
+The peek must be done before the ~parsefile~ call.  ~parsefile~ already
+handles the ~#LedgerName:~ directive as a leading line, so a two-pass open
+or ~seek~ is needed — or ~fromStmt~ can pass the resolved config in.
+
+*** Relationship to per-row account resolution
+
+For multi-account files (FR-015), the account varies per row.  Once the
+format is fingerprinted, ~fromStmt~ passes a catch-all config (e.g. keyed
+on ~'*'~) and the ~process~ callback resolves the per-row ~Account Number~
+via ~accounttab~ or a user-supplied map.  Fingerprinting makes this work
+even when the download filename contains no useful prefix.
+
+*** Tradeoffs
+
+- A fingerprint registry must be maintained by the caller; genuinely
+  unknown CSV formats still need explicit config.
+- If two institutions share an identical header (unlikely but possible),
+  the fingerprint is ambiguous.  The filename prefix remains a valid
+  tie-breaker when present.
+- The ~seek~-back after peeking the header adds a small complexity cost to
+  ~parsefile~ or ~fromStmt~; the existing ~#LedgerName:~ seek is a
+  precedent.
