@@ -115,47 +115,19 @@ Covered by:
 - ~t/test_bug009_inv.pl~ (4 assertions: INVBUY account = ~Assets:Brokerage:Fidelity:AAPL~,
   INVPOS balance line uses same account, neither uses filename-derived "BrokerStmt").
 
-** INVESTIGATING Constructor arguments are poorly integrated             :bug:
+** DONE Constructor arguments are poorly integrated                      :bug:
 :PROPERTIES:
 :ID: BUG-001
 :END:
 
-Several ~Ledger->new~ constructor arguments are accepted but not properly wired
-into the library's own logic.  Investigation needed to decide whether to fix
-each properly or remove it.
+*** ~idtag~ — deferred to BUG-002
 
-*** ~idtag~
+*** ~accounttab~ / ~getaccount~ — FIXED
 
-Stored as ~$self->{idtag}~ but never read back.  Four sites hardcode ~'ID:'~
-regardless of the option (see separate issue below).  Resolution: either thread
-the tag through all call sites, or remove the option and document ~'ID'~ as
-fixed.
-
-Deferred to BUG-002, which tracks this in full detail.
-
-*** ~accounttab~ / ~getaccount~
-
-~accounttab~ is loaded into ~$self->{accounts}~ via ~getacctnum~, but:
-
-- ~getaccount~ is a package-level function, not a method; callers must pass
-  ~$self->{accounts}~ explicitly as a second argument.
-- ~$self->{accounts}~ is never used internally — the library never resolves
-  account numbers itself.
-- ~getacctnum~ redundantly sets ~$self->{accounts}~ both inside the method and
-  via the return-value assignment in ~new()~.
-
-The net effect is that ~accounttab~ loads a table that Ledger.pm never consults;
-callers must manually plumb it through to ~getaccount~.  Resolution: either make
-~getaccount~ a method (using ~$self->{accounts}~ directly) and wire it into
-~fromStmt~/~addStmtTran~ so account numbers are resolved automatically, or
-remove ~accounttab~ from the constructor and leave account resolution entirely to
-the caller.
-
-*Recommended resolution*: remove ~accounttab~ from the constructor.  Wiring
-~getaccount~ into ~addStmtTran~ requires deciding when to resolve (OFX has
-~acctid~ in parsed data; CSV may not), which overlaps with the larger
-filename-vs-account design work in FR-009.  Leaving resolution to callers is
-simpler and honest about what the code actually does.
+Removed ~accounttab~ constructor arg, ~getacctnum~, and ~getaccount~.  The table
+was loaded but never consulted internally; callers had to plumb ~$self->{accounts}~
+through to ~getaccount~ manually.  Account resolution is left entirely to callers,
+which is honest about what the library actually does.
 
 ** TODO idtag option is not consistently honoured                       :bug:
 :PROPERTIES:

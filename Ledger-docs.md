@@ -30,7 +30,6 @@ The `Ledger` module is a Perl-based personal accounting system that reads, parse
 my $ledger = Ledger->new(
     file       => '/path/to/ledger.dat',   # optional: existing ledger file
     payeetab   => '/path/to/desc.yaml',    # optional: YAML payee description cache
-    accounttab => '/path/to/accounts.txt', # optional: account number -> name mapping
     idtag      => 'ID',                    # optional: tag name for transaction IDs (default: 'ID')
     useCache   => 1,                       # optional: enable Storable object cache ($file.store)
     noClassify => 1,                       # optional: skip gentable() (edit-only callers, no import)
@@ -208,22 +207,6 @@ A `!` is appended for pending transactions.
 
 ---
 
-#### `getacctnum($filename)`
-
-Loads a pipe-delimited account number → ledger account name mapping file.
-
-```
-1234 | Assets:Checking:MyBank Checking
-5678 | Liabilities:Credit Card:MyBank Visa
-```
-
----
-
-#### `getaccount($acctid, \%accounts)`
-
-Resolves a 4-digit account ID suffix to a full account name and generates a short code from the account's last component.
-
----
 
 ## `Ledger::Transaction`
 
@@ -716,14 +699,7 @@ Transactions are written in standard Ledger-CLI format:
 /path/to/1234-mar.qfx  → account key = "1234"
 ```
 
-The extracted key must exactly match an entry in the `accounttab` file, which maps keys to full Ledger account names:
-
-```
-1234 | Assets:Checking:MyBank Checking
-5678 | Liabilities:Credit Card:MyBank Visa
-```
-
-For **CSV files**, the same key must also be present as a top-level key in the `%csv` config hash passed to `fromStmt`, since the CSV format and field layout is account-specific:
+The extracted key is used to look up handlers in `%handlers` and, for CSV files, to find the format config in the `%csv` hash passed to `fromStmt`. For **CSV files**, the key must be present as a top-level key in `%csv`, since the CSV format and field layout is account-specific:
 
 ```perl
 my %csv = (
@@ -747,14 +723,9 @@ use Ledger;
 
 # Load existing ledger and payee cache
 my $ledger = Ledger->new(
-    file       => 'personal.dat',
-    payeetab   => 'desc.yaml',
-    accounttab => 'accounts.txt',
+    file     => 'personal.dat',
+    payeetab => 'desc.yaml',
 );
-
-# accounts.txt contains:
-#   1234 | Assets:Checking:MyBank Checking
-#   5678 | Liabilities:Credit Card:MyBank Visa
 
 # Define handlers for known payees
 my %handlers = (
@@ -778,7 +749,6 @@ my %csv = (
     },
 );
 
-# Import statements — filename prefix must match a key in accounttab
 $ledger->fromStmt('1234-2024-03.ofx', \%handlers);
 $ledger->fromStmt('5678-2024-03.csv', \%handlers, \%csv);
 $ledger->fromStmt('1234-2024-03.json', \%handlers);

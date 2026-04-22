@@ -29,7 +29,7 @@ sub new{
     bless $self, $class;
     $self->{desc}=($args{payeetab} && (-f $args{payeetab}))
 	? _read_payeetab($args{payeetab}):{};
-    $self->{accounts}=$args{accounttab}?$self->getacctnum($args{accounttab}):{};
+
     $self->{id}={};
     $self->{payeetab}=$args{payeetab};
     $self->{idtag}=$args{idtag} || 'ID';
@@ -58,19 +58,6 @@ sub _read_payeetab {
     return defined($first) && !ref($first) ? { __global__ => $h } : $h;
 }
 
-sub getacctnum{
-    my $self=shift;
-    my $accfile=shift;
-    my %num;
-    open (my $accounts,"<",$accfile) || die "Can't open $accfile: $!";
-    while (<$accounts>){
-	chomp;
-	s/ *$//;
-	%num=(%num,split(/ \| /));
-    }
-    close($accounts);
-    $self->{accounts}=\%num;
-}
 
 
 sub addTransaction{
@@ -448,17 +435,6 @@ sub makeid{
     return $id;
 }
 
-sub getaccount{
-    my ($acctid, $accounts)=@_;
-    $acctid=~s/.*(....)$/$1/g;
-    my $account=$accounts->{$acctid};
-    my $code=(split(/:/,$account))[-1];
-    $code=join ("", (map {substr ($_,0,1)} split (/\s+/, $code)));
-
-    return ($account,$code);
-}
-
-    
 sub gentable {
     my $self = shift;
     my $table = {};
