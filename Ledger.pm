@@ -183,8 +183,12 @@ sub addStmtBal{
     my $accdef=shift;
     my $balance=shift;
     my $account=$balance->{account}||$accdef;
-    
+
     my $payee=(split(/:/, $account))[-1];
+    if ($balance->{inv401ksource}){
+        $account.=':'.$balance->{inv401ksource};
+        $payee.=' '.$balance->{inv401ksource};
+    }
     $payee.=' Balance';
 	
     my $transaction=new Ledger::Transaction

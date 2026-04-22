@@ -276,21 +276,18 @@ sub invpos{
     my ($arg, $data)=@_;
     return if $arg->{units}==0;
     my %balance;
-    
+
     @balance{qw(date quantity cost)}=(&getdate($arg->{dtpriceasof}),
 				      $arg->{units}, 'BAL');
     $balance{commodity}=$arg->{secid}->{uniqueid};
     $balance{account} = $account if $account;
+    $balance{inv401ksource} = $arg->{inv401ksource} if $arg->{inv401ksource};
 
     if ($data->{transactions}){
 	my ($transaction,$posting)=&{$callback}(\%balance);
 	push @{$data->{check}},$posting;
-        if ($arg->{inv401ksource} && $posting){
-            $posting->{account}.=':'.$arg->{inv401ksource}
-        }
-
     }
- 
+
 }
 
 
