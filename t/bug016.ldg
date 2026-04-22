@@ -1,0 +1,21 @@
+; BUG-016: cleared transaction written at EOF instead of cleared section
+;
+; When the FIRST pending transaction (at cleared_pos) is matched and cleared,
+; the cleared sentinel position is claimed by the pending tx's bpos ref entry.
+; The sentinel registration (//=) skips it, so append_for{cleared} falls
+; through to EOF instead of being written at cleared_pos.
+; Fix: emit append_for{cleared} in the ref-branch cleared_pos block.
+
+2026/03/05 * Coffee Shop
+    Assets:Checking                  -$5.00  ; ID: CHK-000
+    Expenses:Dining
+
+; ---- PENDING ----
+; cleared_pos = bpos of KFC (first pending) — this is the matched transaction.
+2026/03/01 ! KFC
+    Assets:Checking                 -$15.00  ; ID: CHK-001
+    Expenses:Dining
+
+2026/03/04 ! Wal-Mart
+    Assets:Checking                 -$30.00  ; ID: CHK-002
+    Expenses:Clothes

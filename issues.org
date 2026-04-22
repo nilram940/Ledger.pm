@@ -487,6 +487,32 @@ existing ~bpos~ entry in ~posmap~ causes ~update_file~ to skip the original byte
 effectively deleting the transaction from its pending position.
 Covered by ~t/test_issue5.pl~.
 
+** FIXED First pending tx (at cleared_pos) cleared to EOF, not cleared section :bug:
+:PROPERTIES:
+:ID: BUG-016
+:END:
+:LOGBOOK:
+- State "FIXED" from "TODO" [2026-04-22]
+:END:
+
+Mirror of BUG-008: when the FIRST pending transaction in a file is matched and
+cleared by an import, its ~bpos~ equals ~cleared_pos~.  ~posfilter~ registers
+~posmap{bpos} = $tx_ref~, so the sentinel registration (~//=~) skips
+~cleared_pos~.  ~append_for{cleared}~ falls through to the EOF block and the
+cleared transaction appears after all remaining pending transactions.
+
+Balance entries are still written correctly (the existing ref-branch cleared_pos
+block handles them), but the newly-cleared transaction ends up at the wrong place.
+
+Fix: extend the ref-branch cleared_pos block in ~update_file~ to also emit
+~append_for{cleared}~ transactions when ~pos == cleared_pos~.  The date-comment
+header is only written when there are real transactions (not for balance-only,
+preserving the BUG-014 fix).
+
+Covered by ~t/test_bug016.pl~.  Fixture: ~t/bug016.ldg~ (Coffee Shop cleared +
+KFC pending at cleared_pos + Wal-Mart pending after), ~t/bug016.csv~ clears KFC
+and includes a balance assertion.
+
 ** TODO Ambiguous payee string maps to wrong transfer account           :bug:
 :PROPERTIES:
 :ID: BUG-015

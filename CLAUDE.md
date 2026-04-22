@@ -42,6 +42,7 @@ prints a one-line-per-test summary; on failure it re-prints the full output of f
 | `test_fr013_teller.pl` | FR-013: Teller JSON — institution+name account derivation, depository sign, balance assertion |
 | `test_fr014.pl` | FR-014: state-aware insertion — single-file ordering (cleared before pending before uncleared) and multi-file routing to correct sub-files |
 | `test_bug015.pl` | BUG-015: Bayesian classifier predicts `Equity:Transfers:Visa` from training data, no handler needed |
+| `test_bug016.pl` | BUG-016: first pending tx (at `cleared_pos`) cleared to correct position, not EOF |
 
 ### Fixture files
 
@@ -65,6 +66,7 @@ Each test works on a copy of its fixtures in a temporary directory so originals 
 | `fr014_single.ldg` | `test_fr014.pl` (single-file scenario) |
 | `fr014_cleared.ldg`, `fr014_pending.ldg`, `fr014_uncleared.ldg` | `test_fr014.pl` (multi-file scenario) |
 | `bug015.ldg`, `bug015.csv` | `test_bug015.pl` |
+| `bug016.ldg`, `bug016.csv` | `test_bug016.pl` |
 
 There is no `Makefile` or CI configuration.
 

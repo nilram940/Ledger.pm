@@ -686,13 +686,18 @@ sub update_file{
                     ($transaction->{edit_pos} == $pos)) {
                     print $writeh "\n".$transaction->toString();
                 }
-                # When the cleared sentinel was claimed by an in-place edit,
-                # write balance entries immediately after the edit.
-                if ($is_cleared_file && $pos == $self->{cleared_pos}
-                    && !$balance_written && @balance_entries) {
-                    print $writeh "\n; ".localtime."\n\n";
-                    print $writeh join("\n", map { $_->toString } @balance_entries)."\n\n";
-                    $balance_written = 1;
+                # When the cleared sentinel position is claimed by a ref entry
+                # (in-place edit or bpos skip), emit pending cleared appends and
+                # balance entries here instead of at EOF.
+                if ($is_cleared_file && $pos == $self->{cleared_pos}) {
+                    my @to_write = sort { $a->{date} <=> $b->{date} } @{$append_for{cleared}};
+                    my @bal = $balance_written ? () : @balance_entries;
+                    if (@to_write || @bal) {
+                        print $writeh "\n; ".localtime."\n\n" if @to_write;
+                        print $writeh join("\n", map { $_->toString } (@to_write, @bal))."\n\n";
+                        $append_for{cleared} = [] if @to_write;
+                        $balance_written = 1 if @bal;
+                    }
                 }
             } elsif (exists $sentinels{$pos}) {
                 # Sentinel: write each state's transactions at this position
