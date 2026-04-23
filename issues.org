@@ -129,9 +129,12 @@ was loaded but never consulted internally; callers had to plumb ~$self->{account
 through to ~getaccount~ manually.  Account resolution is left entirely to callers,
 which is honest about what the library actually does.
 
-** TODO idtag option is not consistently honoured                       :bug:
+** DONE idtag option is not consistently honoured                       :bug:
 :PROPERTIES:
 :ID: BUG-002
+:END:
+:LOGBOOK:
+- State "DONE" from "TODO" [2026-04-23]
 :END:
 
 ~Ledger->new~ accepts an ~idtag~ constructor parameter (default ~'ID'~) that is
@@ -146,18 +149,10 @@ hardcode the string ~ID:~ instead:
 | ~Ledger/XML.pm~ | 140 | ~/^\s*ID:\s*(\S+)/~ — XML import ID extraction |
 | ~Ledger/CSV.pm~ | 110 | ~$csv{note}!~/ID:/~ — transfer detection heuristic |
 
-Two possible resolutions:
-
-1. *Thread the tag through*: pass ~$idtag~ (or a compiled regex) to each site.
-   ~getid~ in ~Posting.pm~ is the most impactful since it drives ~distance()~
-   ID-based matching.  The ~Ledger~ object is not in scope in ~Posting~ or ~CSV~,
-   so the tag would need to be passed explicitly or stored on each posting at
-   construction time.
-
-2. *Remove the option*: ~'ID'~ appears to be the only tag in use in practice.
-   If no caller has ever needed a different tag, the right fix may be to delete
-   the ~idtag~ constructor parameter, hardcode ~'ID'~ openly, and document the
-   limitation.  This is simpler and honest about what the code actually does.
+Resolved by option 2: removed the ~idtag~ constructor parameter entirely.
+~'ID'~ is the only tag ever used in practice; hardcoding it openly is
+simpler and honest.  The ~$self->{idtag}~ assignment in ~new~ was deleted;
+no other sites required changes since they already hardcoded ~ID:~.
 
 ** DONE Replace strdist with token-based recall in distance()          :bug:
 :PROPERTIES:

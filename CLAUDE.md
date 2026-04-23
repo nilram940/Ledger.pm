@@ -130,7 +130,7 @@ Account numbers are loaded from a pipe-delimited file (`accounttab`):
 - Dates are stored as Unix timestamps internally; formatted with `strftime` for output
 - Transaction state values: `'cleared'` (`*`), `'pending'` (`!`), or `''` (uncleared)
 - `edit_pos == -1` means append; `edit_pos >= 0` means in-place update at that byte offset
-- The `idtag` constructor parameter (default `'ID'`) controls which ledger tag stores transaction IDs
+- Transaction IDs are stored in ledger using the tag `ID:` (hardcoded)
 
 ## Full API Reference
 

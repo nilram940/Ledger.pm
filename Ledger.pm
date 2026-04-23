@@ -35,7 +35,6 @@ sub new{
 
     $self->{id}={};
     $self->{payeetab}=$args{payeetab};
-    $self->{idtag}=$args{idtag} || 'ID';
 
     Ledger::CSV::ledgerCSV($self, $args{file});
 
