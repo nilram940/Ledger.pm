@@ -721,6 +721,114 @@ account path (e.g. ~Assets:Checking:MyBank~ → ~M~).  Two problems:
    and ~Liabilities~ both give ~CC~) can collide in the dedup cache across
    accounts.
 
+*** Proposed change
+
+Replace the account-initials prefix with a fixed source-type prefix that
+identifies the import channel, not the account.  The stable per-transaction
+key is unchanged where a bank-supplied FITID exists; for CSV sources without
+a FITID, an MD5 digest of stable raw fields replaces the date+amount string.
+See ~../scripts/ledgertemp4.pl~ for the working ~TEMP-{md5}~ prototype; compare
+with ~../scripts/ledgertemp2.pl~ which uses the old initials+date+amount form.
+
+**** New ID format
+
+| Source  | Prefix   | Key                                                          |
+|---------+----------+--------------------------------------------------------------|
+| OFX     | ~OFX~    | Bank-supplied FITID (~$trdat->{id}~) — already stable       |
+| CSV (no FITID) | ~CSV~ | ~md5_base64("$date\|$payee\|$quantity")~ — raw pre-callback fields |
+| Plaid   | ~PLAID~  | Plaid transaction_id (~$trdat->{id}~)                        |
+| Teller  | ~TELLER~ | Teller id (~$trdat->{id}~)                                   |
+| Template | ~TEMP~  | ~md5_base64("$date\|$payee\|$amount")~ — stable fields only (see note) |
+
+Result: ~{PREFIX}-{key}~, e.g. ~OFX-12345678~, ~CSV-aBcDeFgH==~.
+
+**** CSV digest normalization
+
+For sources without a bank-supplied FITID, hash a canonical string
+constructed from raw field values *before* the ~process~ callback runs:
+
+#+begin_example
+"$raw_date|$raw_payee|$raw_quantity"
+#+end_example
+
+Fields intentionally excluded from the hash:
+- *State/status*: pending vs. cleared is volatile; the same transaction must
+  get the same ID before and after clearing.
+- *Running balance*: changes as subsequent rows clear.
+- *Account*: could be renamed without affecting transaction identity.
+
+~ledgertemp4.pl~ hashes the full formatted text (including account lines), which
+means any account rename changes the digest and breaks dedup for previously
+written template IDs.  Both CSV and TEMP should use the same three-field
+canonical form; the date component distinguishes separate occurrences of
+recurring transactions.
+
+**** Pending-state flag
+
+Retain the ~!~ suffix for pending transactions.  It is load-bearing: when a
+pending transaction is first imported, it writes ~ID: CSV!-abc123~ to the
+ledger.  On the next import the bank reports the same transaction as cleared;
+~makeid()~ generates ~CSV-abc123~ (no ~!~) → not found in the dedup cache →
+falls through to ~balance()~ matching → the pending entry is correctly
+transitioned to cleared.  Without ~!~, both the pending and cleared passes
+would generate the same key, the cleared version would be deduped, and the
+pending transaction would remain in the ledger indefinitely.
+
+**** ~makeid()~ signature change
+
+Remove ~$account~ from the argument list; callers pass the source prefix:
+
+#+begin_src perl
+use Digest::MD5 qw(md5_base64);
+
+sub makeid {
+    my ($source, $trdat) = @_;
+    my $key;
+    if ($trdat->{id}) {
+        $key = $trdat->{id};
+    } elsif ($source eq 'CSV') {
+        $key = md5_base64(join('|', $trdat->{date_raw} // '',
+                                    $trdat->{payee_raw} // '',
+                                    $trdat->{quantity}  // 0));
+    } else {
+        $key = strftime('%Y/%m/%d', localtime $trdat->{date})
+             . '+$' . sprintf('%.02f', $trdat->{quantity});
+    }
+    $key = $trdat->{salt} . '-' . $key if $trdat->{salt};
+    return "$source-$key";
+}
+#+end_src
+
+Call sites in ~fromStmt~ pass the appropriate prefix:
+~makeid('OFX', $stmttrn)~, ~makeid('CSV', $stmttrn)~, ~makeid('PLAID', $stmttrn)~,
+~makeid('TELLER', $stmttrn)~.
+
+~date_raw~ and ~payee_raw~ must be captured by ~parsefile~ before the ~process~
+callback can overwrite them; they are stashed on ~$csv~ before the callback
+is invoked.
+
+**** Dependency
+
+Add ~Digest::MD5~ to ~Ledger.pm~'s import list and to the dependency table
+in ~Ledger.pm/CLAUDE.md~.
+
+**** Transition
+
+Existing ledger files carry old-format tags (~M-2026/03/05+$-250.00~).  On
+the first import run after the change:
+
+1. ~makeid()~ generates a new-format key; the dedup cache lookup finds the
+   old-format key in the ledger → no match → dedup miss.
+2. ~addStmtTran~ falls back to ~balance()~ scoring (date + amount + payee).
+   ~balance()~ correctly identifies the existing transaction and skips it.
+3. After that run, new-format IDs are written alongside the old tags.
+   Subsequent runs match on the new IDs cleanly.
+
+*Risk*: transactions that score below the ~balance()~ acceptance threshold
+will be treated as new imports.  Mitigation: run ~fromStmt~ in dry-run mode
+on the first transition import and review the match log before committing
+the write.  No bulk migration script is required for the common case.
+
 ** FIXED Balance assertions silently dropped in multiple paths         :bug:
 :PROPERTIES:
 :ID: BUG-011
@@ -1919,3 +2027,228 @@ even when the download filename contains no useful prefix.
 - The ~seek~-back after peeking the header adds a small complexity cost to
   ~parsefile~ or ~fromStmt~; the existing ~#LedgerName:~ seek is a
   precedent.
+
+** TODO Named institution CSV submodules with fingerprint dispatch   :feature:
+:PROPERTIES:
+:ID: FR-020
+:END:
+
+Institution-specific CSV parsing logic is currently written as inline
+closures in import scripts (e.g. the Fidelity and HSA configs in
+~t/test_fr015.pl~ and ~t/test_fr016.pl~).  This means the same
+~header_map~/~process~ block must be duplicated in every script that
+imports from that institution.
+
+*** Goal
+
+Extract each institution's format config into a named
+~Ledger::CSV::Institution~ module.  Each module declares its own
+fingerprint regex so that ~fromStmt~ (via the FR-019 dispatch path) can
+select it automatically when the CSV header matches.  Account names are
+always caller-supplied — never hardcoded in the module.
+
+*** Module interface
+
+Each module exports two class methods:
+
+- ~fingerprint()~ — returns a compiled regex that uniquely matches the
+  institution's CSV header line.
+- ~config(%opts)~ — returns a hashref ready to pass as ~$args~ to
+  ~parsefile~.  ~%opts~ threads caller data (e.g. ~account_map~) into
+  the returned closures without exposing internal field names.
+
+#+begin_src perl
+package Ledger::CSV::Fidelity;
+
+sub fingerprint { qr/^Run Date,Account,Account Number,Action/ }
+
+sub config {
+    my ($class, %opts) = @_;
+    my $account_map = $opts{account_map} // {};
+    my $buy_re  = qr/bought|buy|contribution|reinvestment/i;
+    my $sell_re = qr/sold|sell|redemption/i;
+    return {
+        header_map => {
+            date           => 'Run Date',
+            account_number => 'Account Number',
+            action         => 'Action',
+            symbol         => 'Symbol',
+            payee          => 'Description',
+            contrib_type   => 'Type',
+            price_col      => 'Price ($)',
+            shares         => 'Quantity',
+            quantity       => 'Amount ($)',
+        },
+        process => sub {
+            my $csv = shift;
+            my $base = $account_map->{$csv->{account_number}}
+                       // $csv->{account_number};
+            my $action = $csv->{action} // '';
+            if ($action =~ $buy_re || $action =~ $sell_re) {
+                my $amt = $csv->{quantity} + 0;
+                $amt = $csv->{price_col} * abs($csv->{shares})
+                    if !$amt && $csv->{price_col};
+                $csv->{cost}      = abs($amt);
+                $csv->{quantity}  = $csv->{shares} + 0;
+                $csv->{quantity}  = -$csv->{quantity} if $action =~ $sell_re;
+                $csv->{commodity} = $csv->{symbol};
+                $base .= ":$csv->{symbol}" if ($csv->{symbol}//'') =~ /\S/;
+            }
+            $base .= ":$csv->{contrib_type}"
+                if ($csv->{contrib_type}//'') =~ /\S/;
+            $csv->{account} = $base;
+            $csv->{state}   = 'cleared';
+        },
+    };
+}
+1;
+#+end_src
+
+*** Relationship to FR-019
+
+FR-019 adds fingerprint dispatch logic to ~fromStmt~: when the filename
+prefix does not match a config key, it peeks the CSV header and scans
+registered fingerprints.  FR-020 provides the modules that supply those
+fingerprints.  The two are complementary but independent — FR-020 modules
+can be used before FR-019 is implemented by calling ~config()~ explicitly
+in the import script:
+
+#+begin_src perl
+use Ledger::CSV::Fidelity;
+my %csv = (
+    Fidelity => Ledger::CSV::Fidelity->config(account_map => \%ACCOUNTS),
+);
+$ledger->fromStmt($file, {}, \%csv);
+#+end_src
+
+*** Relationship to FR-015 and FR-016
+
+The Fidelity inline config in ~t/test_fr015.pl~ and the HSA inline config
+in ~t/test_fr016.pl~ are the reference implementations that move into
+~Ledger/CSV/Fidelity.pm~ and ~Ledger/CSV/HSA.pm~ respectively.  No logic
+changes — only extraction into named packages with the two-method
+interface above.
+
+*** Starting modules
+
+**** ~Ledger::CSV::Fidelity~
+
+Fingerprint:
+#+begin_example
+Run Date,Account,Account Number,Action,Symbol,Description,Type,Price ($),Quantity,...
+#+end_example
+~qr/^Run Date,Account,Account Number,Action/~
+
+Migrated from FR-015.  ~config(account_map => \%map)~ — caller supplies an
+~account_number → ledger_account~ map for per-row account resolution.
+Handles Buy/Sell with commodity+cost, Dividend as cash (no symbol suffix),
+and 401k contributions with ~contrib_type~ (~PRETAX~/~MATCH~/etc.) appended
+to the account.
+
+**** ~Ledger::CSV::Coinbase~
+
+Fingerprint:
+#+begin_example
+Timestamp,Transaction Type,Asset,Quantity Transacted,Price Currency,Price at Transaction,Subtotal,Total (inclusive of fees and/or spread),Fees and/or Spread,Notes
+#+end_example
+~qr/^Timestamp,Transaction Type,Asset,Quantity Transacted/~
+
+Coinbase Advanced Trade CSV export (single account per download).
+Account name supplied via ~#LedgerName:~ directive in the file —
+no ~account_map~ needed.
+
+Column mapping:
+- ~Timestamp~ → ~date~
+- ~Asset~ → ~commodity~
+- ~Quantity Transacted~ → ~quantity~
+- ~Total (inclusive of fees...)~ → ~cost~ (Buy/Sell only, absolute value)
+- ~Transaction Type~: ~Buy~/~Sell~ → commodity posting with cost; ~Receive~/~Send~
+  → treat as transfer (set ~account~ to ~Equity:Transfers:$asset~); ~Rewards Income~
+  → pass through as income posting with no cost
+- No running balance column; no balance assertion emitted.
+
+**** ~Ledger::CSV::HSA~
+
+Migrated from FR-016.  Fingerprint:
+~qr/^Transaction Date,Transaction Type,Claimant,Description/~
+
+Account via ~#LedgerName:~ directive.  ~running_balance => 'available_balance'~
+produces an end-of-statement BAL assertion from the last cleared row.
+~Status~ column maps to cleared/pending state.
+
+*** ~Ledger::CSV::detect($header_line)~
+
+A new utility function in ~Ledger/CSV.pm~ that accepts a raw header line
+and returns the first module whose ~fingerprint()~ matches, or ~undef~.
+FR-019's ~fromStmt~ fallback calls this after the filename-prefix lookup
+fails.  The registry is a static list in ~CSV.pm~ (not a directory scan)
+to avoid introducing ~File::Find~:
+
+#+begin_src perl
+my @KNOWN_MODULES = qw(
+    Ledger::CSV::Fidelity
+    Ledger::CSV::Coinbase
+    Ledger::CSV::HSA
+);
+
+sub detect {
+    my $header = shift;
+    for my $mod (@KNOWN_MODULES) {
+        (my $file = $mod) =~ s!::!/!g;
+        require "$file.pm";
+        return $mod if $header =~ $mod->fingerprint();
+    }
+    return undef;
+}
+#+end_src
+
+~fromStmt~ calls ~detect~, then passes ~$mod->config(%caller_opts)~ as the
+resolved config.  ~%caller_opts~ is taken from a new optional fourth
+argument to ~fromStmt~ (or from a key in the existing ~%handlers~).
+
+*** Process callback composition
+
+When a caller needs to augment a module's ~process~ (e.g. to set a custom
+note or override one field), they wrap the returned config, not the module
+internals:
+
+#+begin_src perl
+my $config = Ledger::CSV::Fidelity->config(account_map => \%map);
+my $inner  = $config->{process};
+$config->{process} = sub {
+    my $csv = shift;
+    $inner->($csv);
+    $csv->{note} = "fidelity import $date";
+};
+#+end_src
+
+Modules do not call a caller-supplied hook internally; composition is the
+caller's responsibility.  This keeps module ~process~ closures testable in
+isolation.
+
+*** Tests
+
+Each new module needs a test file:
+
+- ~t/test_fr020_fidelity.pl~ — thin wrapper: calls
+  ~Ledger::CSV::Fidelity->config(account_map => ...)~ and re-runs the
+  FR-015 assertions.  Proves the migration is behaviour-identical.
+- ~t/test_fr020_coinbase.pl~ — new fixture ~t/fr020_coinbase.csv~
+  (with ~#LedgerName:~ prefix) covering Buy, Sell, and Rewards Income rows.
+- ~t/test_fr020_hsa.pl~ — thin wrapper over FR-016 fixture.
+
+Existing ~test_fr015.pl~ and ~test_fr016.pl~ continue to pass unchanged
+(inline config still valid; modules are additive).
+
+*** Tradeoffs
+
+- Callers must still supply account names explicitly; no defaults are
+  baked into modules.
+- A static registry in ~CSV.pm~ must be updated when a new module is
+  added.  This is preferable to auto-discovery via ~File::Find~ given the
+  small, bounded module set.
+- Callback composition is caller-side.  Module ~process~ closures should
+  be kept minimal and focused so wrapping them is straightforward.
+- If two institutions share an identical header prefix, the fingerprint
+  is ambiguous; the static registry order acts as the tiebreaker.
+
