@@ -459,6 +459,24 @@ existing ~bpos~ entry in ~posmap~ causes ~update_file~ to skip the original byte
 effectively deleting the transaction from its pending position.
 Covered by ~t/test_issue5.pl~.
 
+** TODO payeetab records identity mappings when payee is not renamed    :bug:
+:PROPERTIES:
+:ID: BUG-018
+:END:
+
+In ~addStmtTran~, when a duplicate transaction key is encountered (the transaction
+already exists in the ledger), the code records the raw statement payee → ledger
+payee mapping into ~$self->{desc}~ (the payeetab).  If the payee was never renamed
+by a handler, both sides are identical (e.g. ~KFC => KFC~), producing a useless
+identity entry that grows the payeetab file without adding information.
+
+Root cause: the guard at ~Ledger.pm~ line 203 writes to ~$self->{desc}~
+unconditionally when ~$self->{id}{$key}~ exists.  It should skip the write when
+~$payee eq $self->{id}{$key}~.
+
+Fix: wrap the ~$self->{desc}~ writes in ~if ($payee ne $self->{id}{$key}) { ... }~,
+leaving the ~return~ unconditional so deduplication still works.
+
 ** FIXED First pending tx (at cleared_pos) cleared to EOF, not cleared section :bug:
 :PROPERTIES:
 :ID: BUG-016
