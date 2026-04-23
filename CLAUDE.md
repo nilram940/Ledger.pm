@@ -47,6 +47,7 @@ prints a one-line-per-test summary; on failure it re-prints the full output of f
 | `test_bug019.pl` | BUG-019: empty ledger file and pending-only ledger file both handled correctly — transactions written, cleared inserted before pending |
 | `test_fr020_fidelity.pl` | FR-020: `Ledger::CSV::Fidelity->config(account_map =>)` — keyed by account name (e.g. `"Individual - TOD (...1234)"`), behaviour-identical to FR-015 inline config |
 | `test_fr020_hsa.pl` | FR-020: `Ledger::CSV::HSA->config()` — behaviour-identical to FR-016 inline config |
+| `test_fr019.pl` | FR-019: CSV auto-detection — `export-2026-03.csv` (no config key match) fingerprinted to `Ledger::CSV::HSA` via `CSV::detect()`; `#LedgerName:` skipped before header read |
 | `test_fr020_coinbase.pl` | FR-020: `Ledger::CSV::Coinbase->config()` — Buy/Sell (commodity+cost), Rewards Income (commodity, no cost) |
 | `test_fr023.pl` | FR-023: OO parser interface — raw parse via `Ledger::OFX->new->parse` and `Ledger::CSV::HSA->new->parse`; full import via `$ledger->importCallback` |
 
@@ -76,6 +77,7 @@ Each test works on a copy of its fixtures in a temporary directory so originals 
 | `fr013_ofx_401k.ofx` | `test_bug017.pl` |
 | `bug019_empty.ldg`, `bug019_pending.ldg`, `bug019.csv` | `test_bug019.pl` |
 | `fr020_coinbase.csv` | `test_fr020_coinbase.pl` |
+| `fr016_hsa.csv`, `fr013_base.ldg` | `test_fr019.pl` (reused from FR-016/FR-013) |
 | `fr013.ofx`, `fr016_hsa.csv`, `fr013_base.ldg` | `test_fr023.pl` (reused from FR-013/FR-016) |
 
 There is no `Makefile` or CI configuration.
@@ -101,7 +103,7 @@ There is no `Makefile` or CI configuration.
 
 ### Import Pipeline
 
-`fromStmt($filename, \%handlers, \%csv_config)` drives the import. It infers the account name from the filename (prefix before the first `-`), calls `importCallback($account, $handlers)` to build the routing closure, then delegates to the appropriate OO parser (`Ledger::OFX->new->parse`, `Ledger::CSV->new->parse`, or `Ledger::JSON->new->parse`). Callers who need to drive imports without going through `fromStmt` can call `importCallback` directly and pass the result to any parser's `parse()` method.
+`fromStmt($filename, \%handlers, \%csv_config, \%module_opts)` drives the import. It infers the account name from the filename (prefix before the first `-`), calls `importCallback($account, $handlers)` to build the routing closure, then delegates to the appropriate OO parser (`Ledger::OFX->new->parse`, `Ledger::CSV->new->parse`, or `Ledger::JSON->new->parse`). For CSV files, if the filename prefix has no matching key in `%csv_config`, `fromStmt` peeks the header line (skipping any `#LedgerName:` directive), calls `Ledger::CSV::detect()` to find a matching institution module, and uses `$mod->config(%module_opts)` as the config. `%module_opts` is the optional 4th argument; pass e.g. `account_map => \%map` there when auto-detecting multi-account formats like Fidelity. Callers who need to drive imports without going through `fromStmt` can call `importCallback` directly and pass the result to any parser's `parse()` method.
 
 Each parsed transaction is routed through `addStmtTran`, which:
 1. Deduplicates via ID cache (`makeid()` generates a stable key from account initials + FITID or date+amount)

@@ -136,6 +136,7 @@ sub fromStmt{
     my $stmt=shift;
     my $handlers=shift;
     my $csv=shift;
+    my $module_opts=shift||{};
 
     if (-z $stmt) {
         print STDERR "Skipping empty file $stmt\n";
@@ -156,7 +157,20 @@ sub fromStmt{
     if ($stmt=~/.[oq]fx$/i){
 	Ledger::OFX->new($stmt)->parse($callback);
     }elsif ($stmt=~/.csv$/i){
-	Ledger::CSV->new($stmt, $csv->{$account})->parse($callback);
+        my $args=$csv->{$account};
+        unless ($args){
+            open(my $fh,'<',$stmt) or die "Can't open $stmt: $!";
+            local $/="\n";
+            my $line=<$fh>;
+            $line=<$fh> if defined $line && $line=~/^#LedgerName:/;
+            close $fh;
+            chomp($line) if defined $line;
+            my $mod=Ledger::CSV::detect($line) if defined $line;
+            die "Unknown CSV format for $stmt (no config for '$account' and no fingerprint match)\n"
+                unless $mod;
+            $args=$mod->config(%$module_opts);
+        }
+        Ledger::CSV->new($stmt,$args)->parse($callback);
     }elsif ($stmt=~/.json$/i){
         Ledger::JSON->new($stmt)->parse($callback);
     }

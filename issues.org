@@ -1985,7 +1985,7 @@ one pending transaction, balance assertion uses last-cleared value $395.00,
 pending balance $345.00 is absent).  The ~process~ callback in that test does
 not set ~$csv->{account}~; it comes entirely from the ~#LedgerName:~ directive.
 
-** TODO CSV format auto-detection via header fingerprinting            :feature:
+** DONE CSV format auto-detection via header fingerprinting            :feature:
 :PROPERTIES:
 :ID: FR-019
 :END:
