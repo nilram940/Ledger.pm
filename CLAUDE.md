@@ -45,6 +45,9 @@ prints a one-line-per-test summary; on failure it re-prints the full output of f
 | `test_bug016.pl` | BUG-016: first pending tx (at `cleared_pos`) cleared to correct position, not EOF |
 | `test_bug017.pl` | BUG-017: investment OFX with multiple commodities and mixed `INV401KSOURCE` (PRETAX/MATCH) yields one balance assertion per commodity×source, not one per commodity |
 | `test_bug019.pl` | BUG-019: empty ledger file and pending-only ledger file both handled correctly — transactions written, cleared inserted before pending |
+| `test_fr020_fidelity.pl` | FR-020: `Ledger::CSV::Fidelity->config(account_map =>)` — behaviour-identical to FR-015 inline config |
+| `test_fr020_hsa.pl` | FR-020: `Ledger::CSV::HSA->config()` — behaviour-identical to FR-016 inline config |
+| `test_fr020_coinbase.pl` | FR-020: `Ledger::CSV::Coinbase->config()` — Buy/Sell (commodity+cost), Rewards Income (commodity, no cost) |
 
 ### Fixture files
 
@@ -71,6 +74,7 @@ Each test works on a copy of its fixtures in a temporary directory so originals 
 | `bug016.ldg`, `bug016.csv` | `test_bug016.pl` |
 | `fr013_ofx_401k.ofx` | `test_bug017.pl` |
 | `bug019_empty.ldg`, `bug019_pending.ldg`, `bug019.csv` | `test_bug019.pl` |
+| `fr020_coinbase.csv` | `test_fr020_coinbase.pl` |
 
 There is no `Makefile` or CI configuration.
 
@@ -83,7 +87,10 @@ There is no `Makefile` or CI configuration.
 | `Ledger.pm` | Core orchestrator: loads existing ledger (via Storable cache or `ledger csv`), manages transaction list, runs import pipeline, writes changes back |
 | `Ledger/Transaction.pm` | Single transaction: date/state/payee/postings, file byte-position tracking (`bpos`/`epos`/`edit_pos`), matching logic |
 | `Ledger/Posting.pm` | Single posting (account + amount + commodity), serialization |
-| `Ledger/CSV.pm` | Parses CSV statements and `ledger csv` output |
+| `Ledger/CSV.pm` | Parses CSV statements and `ledger csv` output; `detect($header)` returns matching institution module |
+| `Ledger/CSV/Fidelity.pm` | Fidelity brokerage CSV: `fingerprint()` + `config(account_map =>)` |
+| `Ledger/CSV/HSA.pm` | HSA/benefit CSV: `fingerprint()` + `config()`, `running_balance` for BAL assertion |
+| `Ledger/CSV/Coinbase.pm` | Coinbase Advanced Trade CSV: `fingerprint()` + `config()`, account from `#LedgerName:` |
 | `Ledger/OFX.pm` | Parses OFX/QFX bank statement files |
 | `Ledger/JSON.pm` | Dispatches JSON to Plaid or Teller submodule |
 | `Ledger/JSON/Plaid.pm` | Parses Plaid API exports (banking + investment) |

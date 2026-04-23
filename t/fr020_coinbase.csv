@@ -1,0 +1,5 @@
+#LedgerName: Assets:Coinbase
+Timestamp,Transaction Type,Asset,Quantity Transacted,Price Currency,Price at Transaction,Subtotal,Total (inclusive of fees and/or spread),Fees and/or Spread,Notes
+2026-03-05T10:00:00Z,Buy,ETH,1.5,USD,2000.00,3000.00,3007.50,7.50,
+2026-03-10T10:00:00Z,Sell,ETH,0.5,USD,2200.00,1100.00,1096.50,3.50,
+2026-03-15T10:00:00Z,Rewards Income,BTC,0.001,USD,60000.00,60.00,60.00,0.00,

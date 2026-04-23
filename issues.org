@@ -2066,7 +2066,7 @@ even when the download filename contains no useful prefix.
   ~parsefile~ or ~fromStmt~; the existing ~#LedgerName:~ seek is a
   precedent.
 
-** TODO Named institution CSV submodules with fingerprint dispatch   :feature:
+** DONE Named institution CSV submodules with fingerprint dispatch   :feature:
 :PROPERTIES:
 :ID: FR-020
 :END:

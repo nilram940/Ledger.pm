@@ -70,6 +70,22 @@ sub parsefile{
     return 1;
 }
 
+my @KNOWN_MODULES = qw(
+    Ledger::CSV::Fidelity
+    Ledger::CSV::Coinbase
+    Ledger::CSV::HSA
+);
+
+sub detect {
+    my $header = shift;
+    for my $mod (@KNOWN_MODULES) {
+        (my $file = $mod) =~ s!::!/!g;
+        require "$file.pm";
+        return $mod if $header =~ $mod->fingerprint();
+    }
+    return undef;
+}
+
 sub ledgerCSV{
     my $ledger=shift;
     my $file=shift;
