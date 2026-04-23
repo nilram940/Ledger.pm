@@ -1034,6 +1034,25 @@ print $writeh '; '.localtime."\n\n" if @cleared || @uncleared;
 The balance entries are still written; they just don't get a spurious
 date comment when no transactions accompany them.
 
+** TODO Importer breaks when given an empty file or file with no cleared transactions :bug:
+:PROPERTIES:
+:ID: BUG-019
+:END:
+
+~Ledger->new~ breaks when the ledger file is empty or contains no cleared
+transactions.  ~getinsertionpoints~ (formerly ~getofxpos~) has no cleared
+transaction to anchor on, causing failures in object construction or the
+subsequent write path.
+
+Empty files are useful when reconciling a new account: the user creates a
+blank ~.dat~ file and expects the first import run to populate it.
+
+The fix should add a default file path: ~$args{file} || $ENV{LEDGER_FILE}~,
+so callers that omit the file argument get a sensible default from the
+environment.  Additionally, ~getinsertionpoints~ should handle the
+no-transactions case gracefully, falling back to EOF insertion for all
+states.
+
 * Feature Requests
 
 ** DONE Add edit-scheduling methods to Transaction                 :feature:
@@ -2270,3 +2289,46 @@ Existing ~test_fr015.pl~ and ~test_fr016.pl~ continue to pass unchanged
 - If two institutions share an identical header prefix, the fingerprint
   is ambiguous; the static registry order acts as the tiebreaker.
 
+** TODO CSV parser should skip trailing non-data content               :feature:
+:PROPERTIES:
+:ID: FR-021
+:END:
+
+Bank CSV exports often append extraneous text after the last transaction row:
+legal disclaimers, footnotes, column totals, or blank separator lines
+followed by a second table.  ~Ledger::CSV::parsefile~ currently feeds every
+line to ~Text::CSV~ and fails or produces garbage when the row count or
+column layout changes.
+
+The fix should detect when a row does not match the expected column count (or
+contains clearly non-numeric data in the quantity field) and stop parsing at
+that point rather than crashing or producing a spurious transaction.  A
+configurable ~stop_on_blank => 1~ option (stop at the first empty row) would
+cover the most common case.
+
+** TODO Add running balance to CSV output for balance assertions       :feature:
+:PROPERTIES:
+:ID: FR-022
+:END:
+
+CSV files do not inherently carry a running balance.  This feature adds a
+computed running balance column to CSV output so that balance assertions can
+be generated and added to the ledger.
+
+The starting point is the core difficulty: without knowing the account's
+opening balance, the running total cannot be computed accurately for a
+partial-history export.  Two approaches:
+
+1. *Anchor to an existing ledger balance assertion*: find the most recent
+   balance assertion in the existing ledger for the account and start
+   computing from that point forward, using the transactions in the CSV to
+   advance the balance.
+
+2. *Complete-history CSV*: if the CSV covers the entire account history, the
+   starting balance is zero and no anchor is needed.  Detecting this reliably
+   is difficult; a ~complete_history => 1~ option could let the caller assert
+   it explicitly.
+
+Relationship to FR-016: FR-016's ~running_balance~ key consumes an existing
+balance column already present in a CSV.  This FR is about /generating/ that
+column from ledger data when the CSV does not provide one.
