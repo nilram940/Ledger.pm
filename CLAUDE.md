@@ -91,7 +91,7 @@ There is no `Makefile` or CI configuration.
 | `Ledger.pm` | Core orchestrator: loads existing ledger (via Storable cache or `ledger csv`), manages transaction list, runs import pipeline, writes changes back |
 | `Ledger/Transaction.pm` | Single transaction: date/state/payee/postings, file byte-position tracking (`bpos`/`epos`/`edit_pos`), matching logic |
 | `Ledger/Posting.pm` | Single posting (account + amount + commodity), serialization |
-| `Ledger/CSV.pm` | Parses CSV statements and `ledger csv` output; `detect($header)` returns matching institution module; `new($file, $args)` + `parse($cb)` OO interface |
+| `Ledger/CSV.pm` | Parses CSV statements and `ledger csv` output; `detect($header)` returns matching institution module; `new($file, $args, %opts)` — factory: when `$args` is undef, peeks the header and returns the appropriate sub-object (`$mod->new($file, %opts)`); `parse($cb)` OO interface |
 | `Ledger/CSV/Fidelity.pm` | Fidelity brokerage CSV: `fingerprint()` + `config(account_map =>)` (keyed by account name) + `new`/`parse` OO interface |
 | `Ledger/CSV/HSA.pm` | HSA/benefit CSV: `fingerprint()` + `config()`, `running_balance` for BAL assertion + `new`/`parse` OO interface |
 | `Ledger/CSV/Coinbase.pm` | Coinbase Advanced Trade CSV: `fingerprint()` + `config()`, account from `#LedgerName:` + `new`/`parse` OO interface |
@@ -103,7 +103,7 @@ There is no `Makefile` or CI configuration.
 
 ### Import Pipeline
 
-`fromStmt($filename, \%handlers, \%csv_config, \%module_opts)` drives the import. It infers the account name from the filename (prefix before the first `-`), calls `importCallback($account, $handlers)` to build the routing closure, then delegates to the appropriate OO parser (`Ledger::OFX->new->parse`, `Ledger::CSV->new->parse`, or `Ledger::JSON->new->parse`). For CSV files, if the filename prefix has no matching key in `%csv_config`, `fromStmt` peeks the header line (skipping any `#LedgerName:` directive), calls `Ledger::CSV::detect()` to find a matching institution module, and uses `$mod->config(%module_opts)` as the config. `%module_opts` is the optional 4th argument; pass e.g. `account_map => \%map` there when auto-detecting multi-account formats like Fidelity. Callers who need to drive imports without going through `fromStmt` can call `importCallback` directly and pass the result to any parser's `parse()` method.
+`fromStmt($filename, \%handlers, \%csv_config, \%module_opts)` drives the import. It infers the account name from the filename (prefix before the first `-`), calls `importCallback($account, $handlers)` to build the routing closure, then delegates to the appropriate OO parser (`Ledger::OFX->new->parse`, `Ledger::CSV->new->parse`, or `Ledger::JSON->new->parse`). For CSV files, `fromStmt` calls `Ledger::CSV->new($stmt, $csv->{$account}, %module_opts)`. When `$csv->{$account}` is undef (filename prefix has no matching key), `CSV->new` acts as a factory: it peeks the header line (skipping any `#LedgerName:` directive), calls `detect()`, and returns the matched sub-object (`$mod->new($file, %opts)`). `%module_opts` is the optional 4th argument to `fromStmt`; pass e.g. `account_map => \%map` there when auto-detecting multi-account formats like Fidelity. Callers who need to drive imports without going through `fromStmt` can call `importCallback` directly and pass the result to any parser's `parse()` method.
 
 Each parsed transaction is routed through `addStmtTran`, which:
 1. Deduplicates via ID cache (`makeid()` generates a stable key from account initials + FITID or date+amount)

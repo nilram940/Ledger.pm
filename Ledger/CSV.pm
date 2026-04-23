@@ -5,7 +5,18 @@ use Date::Parse;
 use Text::CSV;
 
 sub new {
-    my ($class, $file, $args) = @_;
+    my ($class, $file, $args, %opts) = @_;
+    unless (defined $args) {
+        open(my $fh, '<', $file) or die "Can't open $file: $!";
+        local $/ = "\n";
+        my $line = <$fh>;
+        $line = <$fh> if defined $line && $line =~ /^#LedgerName:/;
+        close $fh;
+        chomp($line) if defined $line;
+        my $mod = detect($line) if defined $line;
+        die "Unknown CSV format for $file: no fingerprint match\n" unless $mod;
+        return $mod->new($file, %opts);
+    }
     return bless { file => $file, args => $args }, $class;
 }
 
