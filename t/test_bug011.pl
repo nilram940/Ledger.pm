@@ -37,8 +37,8 @@ for my $tx (sort { $a->{date} <=> $b->{date} } $ledger->getTransactions()) {
     next unless $tx->{date};
     printf "  %s %s %s\n", scalar(localtime($tx->{date})), $tx->{state}, $tx->{payee};
 }
-printf "ofxfile: %s\nofxpos:  %d\n\n",
-    $ledger->{ofxfile} // '(none)', $ledger->{ofxpos} // -1;
+printf "cleared_file: %s\ncleared_pos:  %d\n\n",
+    $ledger->{cleared_file} // '(none)', $ledger->{cleared_pos} // -1;
 
 $ledger->fromStmt("$dir/Checking-2026-01.csv", $handlers, $csv);
 

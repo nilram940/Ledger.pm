@@ -44,6 +44,7 @@ prints a one-line-per-test summary; on failure it re-prints the full output of f
 | `test_bug015.pl` | BUG-015: Bayesian classifier predicts `Equity:Transfers:Visa` from training data, no handler needed |
 | `test_bug016.pl` | BUG-016: first pending tx (at `cleared_pos`) cleared to correct position, not EOF |
 | `test_bug017.pl` | BUG-017: investment OFX with multiple commodities and mixed `INV401KSOURCE` (PRETAX/MATCH) yields one balance assertion per commodity×source, not one per commodity |
+| `test_bug019.pl` | BUG-019: empty ledger file and pending-only ledger file both handled correctly — transactions written, cleared inserted before pending |
 
 ### Fixture files
 
@@ -69,6 +70,7 @@ Each test works on a copy of its fixtures in a temporary directory so originals 
 | `bug015.ldg`, `bug015.csv` | `test_bug015.pl` |
 | `bug016.ldg`, `bug016.csv` | `test_bug016.pl` |
 | `fr013_ofx_401k.ofx` | `test_bug017.pl` |
+| `bug019_empty.ldg`, `bug019_pending.ldg`, `bug019.csv` | `test_bug019.pl` |
 
 There is no `Makefile` or CI configuration.
 
@@ -112,7 +114,7 @@ There is no `Makefile` or CI configuration.
 
 ### File-Based In-Place Editing
 
-Transactions track their byte positions in source `.dat` files (`bpos`, `epos`). `update()` writes to a `$file.tmp$$` temp file first, then renames it into place; a `.bak` is kept as a safety copy. New transactions are appended at a designated insertion marker (`ofxpos`); in-place edits overwrite the exact byte range of the original transaction.
+Transactions track their byte positions in source `.dat` files (`bpos`, `epos`). `update()` writes to a `$file.tmp$$` temp file first, then renames it into place; a `.bak` is kept as a safety copy. New transactions are appended at the appropriate insertion point (`cleared_pos`, `pending_pos`, or `uncleared_pos`); in-place edits overwrite the exact byte range of the original transaction.
 
 ### Account Resolution
 

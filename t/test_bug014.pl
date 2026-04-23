@@ -34,8 +34,8 @@ my $csv = {
     Checking => { fields => [qw(date id payee quantity account)], csv_args => {} },
 };
 
-printf "ofxfile: %s\nofxpos:  %d\n\n",
-    $ledger->{ofxfile} // '(none)', $ledger->{ofxpos} // -1;
+printf "cleared_file: %s\ncleared_pos:  %d\n\n",
+    $ledger->{cleared_file} // '(none)', $ledger->{cleared_pos} // -1;
 
 $ledger->fromStmt("$dir/Checking-2026-01.csv", $handlers, $csv);
 

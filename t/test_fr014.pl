@@ -78,10 +78,6 @@ print "=" x 60, "\n\n";
     ok($cp < $pp,              'A: cleared_pos < pending_pos');
     ok($pp < $up,              'A: pending_pos < uncleared_pos');
 
-    # Backward-compat aliases still work
-    ok($ledger->{ofxfile} eq $ldg, 'A: ofxfile alias = cleared_file');
-    ok($ledger->{ofxpos}  == $cp,  'A: ofxpos alias = cleared_pos');
-
     $ledger->update();
 
     my $content = slurp($ldg);

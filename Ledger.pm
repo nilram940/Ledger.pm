@@ -16,6 +16,8 @@ sub new{
     my $class=shift;
     my %args=@_;
 
+    $args{file} //= $ENV{LEDGER_FILE};
+
     if ($args{file} && $args{useCache}) {
         my $store = "$args{file}.store";
         if (-f $store && (stat($args{file}))[9] <= (stat($store))[9]) {
@@ -27,6 +29,7 @@ sub new{
     my $self={ transactions => [],
 	       balance=>{}};
     bless $self, $class;
+    $self->{file} = $args{file};
     $self->{desc}=($args{payeetab} && (-f $args{payeetab}))
 	? _read_payeetab($args{payeetab}):{};
 
@@ -201,10 +204,12 @@ sub addStmtTran{
 
     
     if ($self->{id}->{$key}){
-	$self->{desc}->{$account} //= {};
-	$self->{desc}->{$account}->{$payee}=$self->{id}->{$key};
-	$self->{desc}->{__global__} //= {};
-	$self->{desc}->{__global__}->{$payee}=$self->{id}->{$key};
+	if ($payee ne $self->{id}->{$key}) {
+	    $self->{desc}->{$account} //= {};
+	    $self->{desc}->{$account}->{$payee}=$self->{id}->{$key};
+	    $self->{desc}->{__global__} //= {};
+	    $self->{desc}->{__global__}->{$payee}=$self->{id}->{$key};
+	}
 	return;
     }
     $self->{id}->{$key}=$payee;
@@ -267,13 +272,10 @@ sub getinsertionpoints {
     my ($lu) = reverse grep { $_->{state} eq ''        } @txns;
 
     # File routing with fallbacks per FR-014 spec
-    $self->{cleared_file}   = $lc ? $lc->{file} : undef;
+    $self->{cleared_file}   = $lc ? $lc->{file} : $self->{file};
     $self->{pending_file}   = $lp ? $lp->{file}
-                            : ($lu ? $lu->{file} : undef);
+                            : ($lu ? $lu->{file} : $self->{file});
     $self->{uncleared_file} = $lu ? $lu->{file} : $self->{cleared_file};
-
-    # Backward-compat aliases
-    $self->{ofxfile} = $self->{cleared_file};
 
     # Insertion point within each file: bpos of the first later-state txn, else EOF
     for my $target (qw(cleared pending uncleared)) {
@@ -289,12 +291,10 @@ sub getinsertionpoints {
             $first->findtext;
             $self->{"${target}_pos"} = $first->{bpos};
         } else {
-            $self->{"${target}_pos"} = (stat($file))[7];
+            $self->{"${target}_pos"} = (stat($file))[7] // 0;
         }
     }
 
-    # Backward-compat alias
-    $self->{ofxpos} = $self->{cleared_pos};
 }
 
 sub insertionFileFor {
@@ -653,10 +653,12 @@ sub update_file{
 
             my $len=$pos-$lastpos-1;
             die "update_file: negative offset (pos=$pos lastpos=$lastpos) in $file\n"
-                if $len < 0;
-            seek ($readh, $lastpos, SEEK_SET);
-            read $readh, (my $buffer), $len;
-            print $writeh $buffer;
+                if $len < 0 && $pos > 0;
+            if ($len > 0) {
+                seek ($readh, $lastpos, SEEK_SET);
+                read $readh, (my $buffer), $len;
+                print $writeh $buffer;
+            }
 
             if (ref($transaction)){
                 $lastpos=(($pos == $transaction->{bpos})?

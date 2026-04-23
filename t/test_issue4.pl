@@ -46,14 +46,14 @@ my $csv4a = {
 
 print "--- Ledger state before import ---\n";
 dump_ledger($ledger4a);
-printf "ofxfile: %s\n\n", $ledger4a->{ofxfile}//'(none)';
+printf "cleared_file: %s\n\n", $ledger4a->{cleared_file}//'(none)';
 
 $ledger4a->fromStmt("$dir/Checking-2026-04.csv", $handlers4a, $csv4a);
 
 print "\n--- Transactions after import (before write) ---\n";
 dump_ledger($ledger4a);
 
-printf "ofxpos: %d\n", $ledger4a->{ofxpos}//-1;
+printf "cleared_pos: %d\n", $ledger4a->{cleared_pos}//-1;
 
 print "\n--- Writing changes ---\n";
 $ledger4a->update();

@@ -459,9 +459,12 @@ existing ~bpos~ entry in ~posmap~ causes ~update_file~ to skip the original byte
 effectively deleting the transaction from its pending position.
 Covered by ~t/test_issue5.pl~.
 
-** TODO payeetab records identity mappings when payee is not renamed    :bug:
+** FIXED payeetab records identity mappings when payee is not renamed    :bug:
 :PROPERTIES:
 :ID: BUG-018
+:END:
+:LOGBOOK:
+- State "FIXED" from "TODO" [2026-04-23]
 :END:
 
 In ~addStmtTran~, when a duplicate transaction key is encountered (the transaction
@@ -1034,9 +1037,12 @@ print $writeh '; '.localtime."\n\n" if @cleared || @uncleared;
 The balance entries are still written; they just don't get a spurious
 date comment when no transactions accompany them.
 
-** TODO Importer breaks when given an empty file or file with no cleared transactions :bug:
+** FIXED Importer breaks when given an empty file or file with no cleared transactions :bug:
 :PROPERTIES:
 :ID: BUG-019
+:END:
+:LOGBOOK:
+- State "FIXED" from "TODO" [2026-04-23]
 :END:
 
 ~Ledger->new~ breaks when the ledger file is empty or contains no cleared

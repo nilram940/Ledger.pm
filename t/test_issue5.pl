@@ -37,8 +37,8 @@ my $csv = {
 
 print "--- Ledger state before import ---\n";
 dump_ledger($ledger);
-printf "ofxfile: %s\n", $ledger->{ofxfile} // '(none)';
-printf "ofxpos:  %d\n\n", $ledger->{ofxpos} // -1;
+printf "cleared_file: %s\n", $ledger->{cleared_file} // '(none)';
+printf "cleared_pos:  %d\n\n", $ledger->{cleared_pos} // -1;
 
 $ledger->fromStmt("$dir/Checking-2026-02.csv", $handlers, $csv);
 
