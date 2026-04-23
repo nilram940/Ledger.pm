@@ -45,9 +45,10 @@ prints a one-line-per-test summary; on failure it re-prints the full output of f
 | `test_bug016.pl` | BUG-016: first pending tx (at `cleared_pos`) cleared to correct position, not EOF |
 | `test_bug017.pl` | BUG-017: investment OFX with multiple commodities and mixed `INV401KSOURCE` (PRETAX/MATCH) yields one balance assertion per commodity×source, not one per commodity |
 | `test_bug019.pl` | BUG-019: empty ledger file and pending-only ledger file both handled correctly — transactions written, cleared inserted before pending |
-| `test_fr020_fidelity.pl` | FR-020: `Ledger::CSV::Fidelity->config(account_map =>)` — behaviour-identical to FR-015 inline config |
+| `test_fr020_fidelity.pl` | FR-020: `Ledger::CSV::Fidelity->config(account_map =>)` — keyed by account name (e.g. `"Individual - TOD (...1234)"`), behaviour-identical to FR-015 inline config |
 | `test_fr020_hsa.pl` | FR-020: `Ledger::CSV::HSA->config()` — behaviour-identical to FR-016 inline config |
 | `test_fr020_coinbase.pl` | FR-020: `Ledger::CSV::Coinbase->config()` — Buy/Sell (commodity+cost), Rewards Income (commodity, no cost) |
+| `test_fr023.pl` | FR-023: OO parser interface — raw parse via `Ledger::OFX->new->parse` and `Ledger::CSV::HSA->new->parse`; full import via `$ledger->importCallback` |
 
 ### Fixture files
 
@@ -75,6 +76,7 @@ Each test works on a copy of its fixtures in a temporary directory so originals 
 | `fr013_ofx_401k.ofx` | `test_bug017.pl` |
 | `bug019_empty.ldg`, `bug019_pending.ldg`, `bug019.csv` | `test_bug019.pl` |
 | `fr020_coinbase.csv` | `test_fr020_coinbase.pl` |
+| `fr013.ofx`, `fr016_hsa.csv`, `fr013_base.ldg` | `test_fr023.pl` (reused from FR-013/FR-016) |
 
 There is no `Makefile` or CI configuration.
 
@@ -87,19 +89,21 @@ There is no `Makefile` or CI configuration.
 | `Ledger.pm` | Core orchestrator: loads existing ledger (via Storable cache or `ledger csv`), manages transaction list, runs import pipeline, writes changes back |
 | `Ledger/Transaction.pm` | Single transaction: date/state/payee/postings, file byte-position tracking (`bpos`/`epos`/`edit_pos`), matching logic |
 | `Ledger/Posting.pm` | Single posting (account + amount + commodity), serialization |
-| `Ledger/CSV.pm` | Parses CSV statements and `ledger csv` output; `detect($header)` returns matching institution module |
-| `Ledger/CSV/Fidelity.pm` | Fidelity brokerage CSV: `fingerprint()` + `config(account_map =>)` |
-| `Ledger/CSV/HSA.pm` | HSA/benefit CSV: `fingerprint()` + `config()`, `running_balance` for BAL assertion |
-| `Ledger/CSV/Coinbase.pm` | Coinbase Advanced Trade CSV: `fingerprint()` + `config()`, account from `#LedgerName:` |
-| `Ledger/OFX.pm` | Parses OFX/QFX bank statement files |
-| `Ledger/JSON.pm` | Dispatches JSON to Plaid or Teller submodule |
+| `Ledger/CSV.pm` | Parses CSV statements and `ledger csv` output; `detect($header)` returns matching institution module; `new($file, $args)` + `parse($cb)` OO interface |
+| `Ledger/CSV/Fidelity.pm` | Fidelity brokerage CSV: `fingerprint()` + `config(account_map =>)` (keyed by account name) + `new`/`parse` OO interface |
+| `Ledger/CSV/HSA.pm` | HSA/benefit CSV: `fingerprint()` + `config()`, `running_balance` for BAL assertion + `new`/`parse` OO interface |
+| `Ledger/CSV/Coinbase.pm` | Coinbase Advanced Trade CSV: `fingerprint()` + `config()`, account from `#LedgerName:` + `new`/`parse` OO interface |
+| `Ledger/OFX.pm` | Parses OFX/QFX bank statement files; `new($file)` + `parse($cb)` OO interface |
+| `Ledger/JSON.pm` | Dispatches JSON to Plaid or Teller submodule; `new($file)` + `parse($cb)` OO interface |
 | `Ledger/JSON/Plaid.pm` | Parses Plaid API exports (banking + investment) |
 | `Ledger/JSON/Teller.pm` | Parses Teller API exports |
 | `Ledger/XML.pm` | Parses Ledger-CLI XML export format |
 
 ### Import Pipeline
 
-`fromStmt($filename, \%handlers, \%csv_config)` drives the import. The account name is inferred from the filename (prefix before the first `-`). Each parsed transaction is routed through `addStmtTran`, which:
+`fromStmt($filename, \%handlers, \%csv_config)` drives the import. It infers the account name from the filename (prefix before the first `-`), calls `importCallback($account, $handlers)` to build the routing closure, then delegates to the appropriate OO parser (`Ledger::OFX->new->parse`, `Ledger::CSV->new->parse`, or `Ledger::JSON->new->parse`). Callers who need to drive imports without going through `fromStmt` can call `importCallback` directly and pass the result to any parser's `parse()` method.
+
+Each parsed transaction is routed through `addStmtTran`, which:
 1. Deduplicates via ID cache (`makeid()` generates a stable key from account initials + FITID or date+amount)
 2. Looks up a handler (code ref or hashref with `payee`/`transfer` keys) by account+payee, falling back to the payee description cache (`YAML::Tiny`-persisted)
 3. Matches against existing uncleared transactions using `Transaction::balance()` — a scoring function based on date proximity, amount difference, payee similarity, check number, and pending ID

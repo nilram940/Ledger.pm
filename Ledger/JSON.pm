@@ -6,6 +6,16 @@ use strict;
 use Date::Parse;
 use JSON;
 
+sub new {
+    my ($class, $file) = @_;
+    return bless { file => $file }, $class;
+}
+
+sub parse {
+    my ($self, $callback) = @_;
+    return parsefile($self->{file}, $callback);
+}
+
 sub parsefile{
     my ($file,$callback)=@_;
     my $json=&readjson($file);

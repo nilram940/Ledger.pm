@@ -30,6 +30,16 @@ my $data;
 my $callback;
 my $account;
 
+sub new {
+    my ($class, $file) = @_;
+    return bless { file => $file }, $class;
+}
+
+sub parse {
+    my ($self, $cb) = @_;
+    return parsefile($self->{file}, $cb);
+}
+
 sub parsefile{
     my $file=shift;
     $callback=shift;
@@ -45,14 +55,14 @@ sub parsefile{
     if ($body =~/^LEDGERNAME:\s*(.+?)\s*$/m){
         $account=$1;
     };
-    return &parse($body);
+    return &_parse($body);
 }
 
-sub parse{
+sub _parse{
     my $body=shift;
     my %header=();
     my $header=substr $body,0,(index $body,'<'),'';
-    
+
     return &parsebody($body);
 
 }

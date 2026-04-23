@@ -4,6 +4,17 @@ use warnings;
 
 sub fingerprint { qr/^Timestamp,Transaction Type,Asset,Quantity Transacted/ }
 
+sub new {
+    my ($class, $file, %opts) = @_;
+    return bless { file => $file, config => $class->config(%opts) }, $class;
+}
+
+sub parse {
+    my ($self, $callback) = @_;
+    require Ledger::CSV;
+    return Ledger::CSV::parsefile($self->{file}, $self->{config}, $callback);
+}
+
 sub config {
     my ($class, %opts) = @_;
     return {

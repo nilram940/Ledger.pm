@@ -4,6 +4,16 @@ use strict;
 use Date::Parse;
 use Text::CSV;
 
+sub new {
+    my ($class, $file, $args) = @_;
+    return bless { file => $file, args => $args }, $class;
+}
+
+sub parse {
+    my ($self, $callback) = @_;
+    return parsefile($self->{file}, $self->{args}, $callback);
+}
+
 sub parsefile{
     my ($file,$args,$callback)=@_;
     my $fields=$args->{fields};

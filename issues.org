@@ -1,6 +1,7 @@
 #+TITLE: Ledger.pm Issues and Feature Requests
 #+TODO: TODO INVESTIGATING | FIXED DONE WONTFIX
 
+
 * Bugs
 
 ** FIXED Account identification via filename is fragile              :bug:
@@ -1053,6 +1054,7 @@ so callers that omit the file argument get a sensible default from the
 environment.  Additionally, ~getinsertionpoints~ should handle the
 no-transactions case gracefully, falling back to EOF insertion for all
 states.
+
 
 * Feature Requests
 
@@ -2290,6 +2292,40 @@ Existing ~test_fr015.pl~ and ~test_fr016.pl~ continue to pass unchanged
 - If two institutions share an identical header prefix, the fingerprint
   is ambiguous; the static registry order acts as the tiebreaker.
 
+*** Corrections
+
+**** ~Ledger::CSV::Fidelity~: account map keyed by ~Account~ name, not ~Account Number~
+
+The FR-020 implementation section documented ~account_number~ as the map key and
+~Account Number~ as the column used for account resolution.  In practice the
+~Account Number~ column contains an opaque ID (e.g. ~X12345678~), which is not a
+useful map key.  The ~Account~ column contains a human-readable name
+(e.g. ~"Fidelity Roth IRA"~), which is what callers naturally supply in
+~account_map~.
+
+Correction: ~header_map~ now includes ~account_name => 'Account'~, and ~process~
+resolves via ~$account_map->{$csv->{account_name}} // $csv->{account_name}~.
+The ~account_number~ mapping remains available but is no longer used for account
+resolution.
+
+**** ~Ledger::CSV::HSA~: card-transaction sign and payee fallback
+
+Two gaps in the FR-016/FR-020 HSA implementation:
+
+1. *Sign*: HSA CSV exports always emit positive amounts regardless of
+   direction.  Card transactions are debits and must be negated.  The ~process~
+   callback now reads ~Transaction Type~ and applies:
+   #+begin_src perl
+   $csv->{quantity} = -abs($csv->{quantity} + 0)
+       if $csv->{transaction_type} =~ /\bcard\b/i;
+   #+end_src
+   Card refunds will be mis-signed and should surface as balance assertion
+   failures for manual correction.
+
+2. *Payee fallback*: the ~Description~ column is sometimes blank.  When empty,
+   ~$csv->{payee}~ now falls back to ~$csv->{transaction_type}~ so the
+   transaction is not written with an empty payee.
+
 ** TODO CSV parser should skip trailing non-data content               :feature:
 :PROPERTIES:
 :ID: FR-021
@@ -2333,3 +2369,38 @@ partial-history export.  Two approaches:
 Relationship to FR-016: FR-016's ~running_balance~ key consumes an existing
 balance column already present in a CSV.  This FR is about /generating/ that
 column from ledger data when the CSV does not provide one.
+
+** DONE OO file imports                                             :feature:
+:PROPERTIES:
+:ID: FR-023
+:END:
+
+  Consider changing the design to a more OO design. Rather than
+  $ledger->fromStmt($file,...). The process would be
+  $ofx = new Ledger::OFX($file);
+  $fid = new Ledger::CSV::Fidelity($file, \%csvargs);
+
+  Parse would be a method call:
+  $ofx->parse($callback);
+  $fid->parse($callback);
+
+*Implemented*: All parser modules (~Ledger::OFX~, ~Ledger::JSON~,
+~Ledger::CSV~, ~Ledger::CSV::Fidelity~, ~Ledger::CSV::HSA~,
+~Ledger::CSV::Coinbase~) now have ~new($file, ...)~ and ~parse($callback)~
+methods.  ~Ledger::OFX~ internal ~sub parse~ renamed to ~_parse~ to free the
+name.
+
+~Ledger->importCallback($account, \%handlers)~ extracts the routing closure
+from ~fromStmt~ into a public method, so callers can drive imports without
+going through ~fromStmt~:
+
+#+begin_src perl
+  my $cb = $ledger->importCallback('Checking', \%handlers);
+  Ledger::OFX->new($file)->parse($cb);
+#+end_src
+
+~fromStmt~ is now a thin dispatcher that calls ~importCallback~ and delegates
+to the appropriate OO parser.  ~Fidelity->config(account_map =>)~ now keys on
+the human-readable ~Account~ column name rather than the ~Account Number~
+field.  Test: ~test_fr023.pl~.
+

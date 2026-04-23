@@ -115,11 +115,23 @@ sub fromXML{
     return $self
 }
 
+sub importCallback{
+    my ($self, $account, $handlers) = @_;
+    return sub {
+        my $stmtrns = shift;
+        if ($stmtrns->{cost} && $stmtrns->{cost} eq 'BAL') {
+            $self->addStmtBal($account, $stmtrns);
+        } else {
+            $self->addStmtTran($account, $handlers, $stmtrns);
+        }
+    };
+}
+
 sub fromStmt{
     # read Stmt and convert to Ledger data structure.
     # expects files to be named $account-$date.$type
     # Supports OFX and CSV;
-    
+
     my $self=shift;
     my $stmt=shift;
     my $handlers=shift;
@@ -129,32 +141,24 @@ sub fromStmt{
         print STDERR "Skipping empty file $stmt\n";
         return
     }
-            
-    
+
     my $account=$stmt;
     $account=~s/-.*//;
     $account=~s!.*/!!;
     $account=~s/\..*//;
 
-    my $callback=sub{
-	my $stmtrns=shift;
-	if ($stmtrns->{cost} && $stmtrns->{cost} eq 'BAL'){
-	    $self->addStmtBal($account,$stmtrns);
-	}else{
-	    $self->addStmtTran($account,$handlers,$stmtrns);
-	}
-    };
-
     unless (exists $self->{cleared_file}){
 	$self->getinsertionpoints;
     }
 
+    my $callback = $self->importCallback($account, $handlers);
+
     if ($stmt=~/.[oq]fx$/i){
-	&Ledger::OFX::parsefile($stmt, $callback);
+	Ledger::OFX->new($stmt)->parse($callback);
     }elsif ($stmt=~/.csv$/i){
-	&Ledger::CSV::parsefile($stmt, $csv->{$account}, $callback);
+	Ledger::CSV->new($stmt, $csv->{$account})->parse($callback);
     }elsif ($stmt=~/.json$/i){
-        &Ledger::JSON::parsefile($stmt, $callback);
+        Ledger::JSON->new($stmt)->parse($callback);
     }
     return $self;
 

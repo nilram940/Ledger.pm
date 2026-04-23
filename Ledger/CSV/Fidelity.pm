@@ -4,6 +4,17 @@ use warnings;
 
 sub fingerprint { qr/^Run Date,Account,Account Number,Action/ }
 
+sub new {
+    my ($class, $file, %opts) = @_;
+    return bless { file => $file, config => $class->config(%opts) }, $class;
+}
+
+sub parse {
+    my ($self, $callback) = @_;
+    require Ledger::CSV;
+    return Ledger::CSV::parsefile($self->{file}, $self->{config}, $callback);
+}
+
 sub config {
     my ($class, %opts) = @_;
     my $account_map = $opts{account_map} // {};
@@ -13,6 +24,7 @@ sub config {
         header_map => {
             date           => 'Run Date',
             account_number => 'Account Number',
+            account_name   => 'Account',
             action         => 'Action',
             symbol         => 'Symbol',
             payee          => 'Description',
@@ -23,8 +35,8 @@ sub config {
         },
         process => sub {
             my $csv = shift;
-            my $base = $account_map->{$csv->{account_number}}
-                       // $csv->{account_number};
+            my $base = $account_map->{$csv->{account_name}}
+                       // $csv->{account_name};
             my $action = $csv->{action} // '';
             if ($action =~ $buy_re || $action =~ $sell_re) {
                 my $amt = $csv->{quantity} + 0;

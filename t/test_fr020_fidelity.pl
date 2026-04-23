@@ -22,8 +22,8 @@ copy('fr015_fidelity.csv', "$dir/Fidelity-2026-03.csv") or die "copy csv: $!";
 my $ledger = Ledger->new(file => $ldg);
 
 my %account_map = (
-    'Z12345678' => 'Assets:Investments:Fidelity',
-    'Z87654321' => 'Assets:Investments:Fidelity401k',
+    'Individual - TOD (...1234)' => 'Assets:Investments:Fidelity',
+    '401K (...5678)'             => 'Assets:Investments:Fidelity401k',
 );
 
 my $csv_config = {
