@@ -1,5 +1,5 @@
 #LedgerName: Assets:HSA
-Transaction Date,Transaction Type,Claimant,Description,Plan,Date of Service,Amount,Status,Available Balance
+"Transaction Date","Transaction Type",Claimant,Description,Plan,Date of Service,Amount,Status,Available Balance
 03/05/2026,Distribution,John Doe,Pharmacy,Medical FSA,03/01/2026,-25.00,Completed,475.00
 03/12/2026,Distribution,John Doe,Eye Doctor,Medical FSA,03/10/2026,-80.00,Completed,395.00
 03/25/2026,Distribution,John Doe,Pending Claim,Medical FSA,03/24/2026,-50.00,Pending,345.00

@@ -8,11 +8,15 @@ sub new {
     my ($class, $file, $args, %opts) = @_;
     unless (defined $args) {
         open(my $fh, '<', $file) or die "Can't open $file: $!";
-        local $/ = "\n";
-        my $line = <$fh>;
-        $line = <$fh> if defined $line && $line =~ /^#LedgerName:/;
+        my $line;
+        while (<$fh>){
+            if (/\w/ && !/^#/){
+                $line=$_;
+                chomp($line);
+                last;
+            }
+        }
         close $fh;
-        chomp($line) if defined $line;
         my $mod = detect($line) if defined $line;
         die "Unknown CSV format for $file: no fingerprint match\n" unless $mod;
         return $mod->new($file, %opts);
@@ -78,7 +82,8 @@ sub parsefile{
         $csv{idlist} = [$csv{date}, $csv{payee}, $csv{quantity}] unless $csv{id};
         &{$args->{process}}(\%csv) if $args->{process};
         if ($rb_field && defined $csv{$rb_field} && length $csv{$rb_field}
-            && ($csv{state}//'cleared') ne 'pending') {
+            && ($csv{state}//'cleared') ne 'pending'
+            && $csv{date} > ($rb_date // 0)) {
             ($rb_val = $csv{$rb_field}) =~ s/^(-?)[^-\d]*\$/$1/;
             $rb_date = $csv{date};
         }
@@ -99,6 +104,8 @@ my @KNOWN_MODULES = qw(
     Ledger::CSV::HSA
 );
 
+
+    
 sub detect {
     my $header = shift;
     for my $mod (@KNOWN_MODULES) {

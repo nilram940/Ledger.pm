@@ -1201,6 +1201,32 @@ correctness; all add noise.
 - Trailing ~#if $transaction->{pending_transaction_id};~ comment
 - ~print STDERR "Updating lasttrans:..."~ and ~print STDERR Dumper(...)~ debug prints
 
+** DONE ~running_balance~ balance assertion uses first row instead of latest :bug:
+:PROPERTIES:
+:ID: BUG-024
+:END:
+:LOGBOOK:
+- State "DONE" from "TODO" [2026-04-24]
+:END:
+
+~Ledger::CSV::parsefile~ tracked the running balance unconditionally on every
+cleared row, overwriting ~$rb_val~ and ~$rb_date~ each time.  For CSVs sorted
+newest-first (descending), the loop ends on the oldest row, so the emitted
+balance assertion used the earliest available balance instead of the most
+recent.
+
+Mirrors the Teller.pm pattern: ~lasttrans~ is updated only when
+~$tran{date} > $account->{lasttrans}~, guaranteeing the most recent date wins.
+
+Known limitation: two cleared transactions on the same date — the strict ~>~
+guard means only the first such row's balance is captured.  This affects
+ascending-order CSVs with same-day transactions.  Deferred.
+
+*** Fix
+
+Added ~&& $csv{date} > ($rb_date // 0)~ to the ~running_balance~ update
+condition in ~parsefile~.
+
 * Feature Requests
 
 ** DONE Add edit-scheduling methods to Transaction                 :feature:
