@@ -139,6 +139,15 @@ sub fromStmt{
     my $csv=shift;
     my $module_opts=shift||{};
 
+    if (ref $stmt) {
+        unless (exists $self->{cleared_file}){
+            $self->getinsertionpoints;
+        }
+        my $account = $stmt->can('account') ? $stmt->account() : undef;
+        $stmt->parse($self->importCallback($account, $handlers));
+        return $self;
+    }
+
     if (-z $stmt) {
         print STDERR "Skipping empty file $stmt\n";
         return

@@ -2535,3 +2535,42 @@ to the appropriate OO parser.  ~Fidelity->config(account_map =>)~ now keys on
 the human-readable ~Account~ column name rather than the ~Account Number~
 field.  Test: ~test_fr023.pl~.
 
+** TODO Ledger::XML is unreachable dead code                              :bug:
+:PROPERTIES:
+:ID: BUG-022
+:END:
+
+~Ledger::XML~ parses ~ledger xml~ output but has no callers and predates the
+current ~ledger csv~ read interface.  ~Ledger::fromXML~ (the only entry point,
+~Ledger.pm:112~) is itself uncalled anywhere in the project.
+~Posting::fromXMLstruct~ (~Ledger/Posting.pm:36~) is a companion with the same
+status.
+
+The module also contains dead code internally: ~oldchar()~ is defined but never
+registered as a handler (it was replaced by ~char()~), and the ~gettransinfo()~
+call in ~end()~ is commented out.
+
+It does not follow the OO ~new~ / ~parse~ interface established for all other
+parsers in FR-023.  There are no tests.
+
+Decision needed: remove ~Ledger::XML~, ~Ledger::fromXML~,
+~Posting::fromXMLstruct~, and the ~use Ledger::XML~ import in ~Ledger.pm~ — or
+document a concrete use case that justifies keeping and modernising it.
+
+** DONE ~fromStmt~ accepts parser objects                             :feature:
+:PROPERTIES:
+:ID: FR-024
+:END:
+
+~fromStmt~ required a filename.  Callers who had already constructed a parser
+object (e.g. ~Ledger::CSV::HSA->new($file)->account($acct)~) had to call
+~importCallback~ manually and invoke ~parse~ themselves — ~fromStmt~ could not
+be used as a uniform entry point.
+
+*Implemented*: ~fromStmt~ now checks ~ref $stmt~ first.  When the argument is
+an object it calls ~$stmt->account()~ (via ~can()~, since ~Ledger::OFX~ has no
+such method) to obtain the account name, builds the callback via
+~importCallback~, then calls ~$stmt->parse($callback)~ directly.  The
+~%csv_config~ and ~%module_opts~ arguments are unused in this path.  The
+filename path is unchanged.
+
