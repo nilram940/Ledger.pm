@@ -147,6 +147,20 @@ Account numbers are loaded from a pipe-delimited file (`accounttab`):
 - `edit_pos == -1` means append; `edit_pos >= 0` means in-place update at that byte offset
 - Transaction IDs are stored in ledger using the tag `ID:` (hardcoded)
 
+## Potential Future CSV Modules
+
+Institutions that lack OFX export and are not reliably covered by Plaid or Teller, making them
+good candidates for dedicated `Ledger::CSV::*` modules:
+
+| Institution | Notes |
+|-------------|-------|
+| **Apple Card** | CSV only, no OFX, no Plaid. Clean format: `Transaction Date`, `Clearing Date`, `Description`, `Merchant`, `Category`, `Type`, `Amount (USD)`. |
+| **Charles Schwab** | Plaid covers checking but brokerage history is spotty. CSV has 2–3 preamble lines (account name/number) before the column header — similar to Fidelity. Key columns: `Date`, `Action`, `Symbol`, `Quantity`, `Price`, `Fees & Comm`, `Amount`. |
+| **Vanguard** | Weak Plaid coverage for brokerage/retirement. CSV has a date-range line before column names; mixes mutual fund and ETF rows with different semantics. |
+| **PayPal** | Plaid shows only a summary; full CSV has `Currency`, `Balance`, `Type` (payment/transfer/refund) and multi-currency rows that need collapsing. |
+| **Kraken** | Natural companion to Coinbase. Uses a `Ledgers` export with `txid`, `type` (trade/transfer/staking/earn), `asset`, `amount`, `fee`. Staking rewards are a distinctive row type. |
+| **TSP** | Federal Thrift Savings Plan — zero Plaid/Teller coverage, no OFX. Simple CSV but unique fund codes (G/F/C/S/I/L funds). |
+
 ## Full API Reference
 
 See `Ledger-docs.md` for complete method signatures and examples.
