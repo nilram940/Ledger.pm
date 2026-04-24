@@ -50,7 +50,7 @@ prints a one-line-per-test summary; on failure it re-prints the full output of f
 | `test_fr020_hsa.pl` | FR-020: `Ledger::CSV::HSA->config()` — behaviour-identical to FR-016 inline config |
 | `test_fr019.pl` | FR-019: CSV auto-detection — `export-2026-03.csv` (no config key match) fingerprinted to `Ledger::CSV::HSA` via `CSV::detect()`; `#LedgerName:` skipped before header read |
 | `test_fr020_coinbase.pl` | FR-020: `Ledger::CSV::Coinbase->config()` — Buy/Sell (commodity+cost), Rewards Income (commodity, no cost) |
-| `test_fr023.pl` | FR-023: OO parser interface — raw parse via `Ledger::OFX->new->parse` and `Ledger::CSV::HSA->new->parse`; full import via `$ledger->importCallback` |
+| `test_fr023.pl` | FR-023: OO parser interface — raw parse via `Ledger::OFX->new->parse` and `Ledger::CSV::HSA->new->parse`; full import via `$ledger->importCallback`; `type()`, `account()`, `account_map()` instance methods on all CSV submodules |
 
 ### Fixture files
 
@@ -80,7 +80,7 @@ Each test works on a copy of its fixtures in a temporary directory so originals 
 | `bug019_empty.ldg`, `bug019_pending.ldg`, `bug019.csv` | `test_bug019.pl` |
 | `fr020_coinbase.csv` | `test_fr020_coinbase.pl` |
 | `fr016_hsa.csv`, `fr013_base.ldg` | `test_fr019.pl` (reused from FR-016/FR-013) |
-| `fr013.ofx`, `fr016_hsa.csv`, `fr013_base.ldg` | `test_fr023.pl` (reused from FR-013/FR-016) |
+| `fr013.ofx`, `fr016_hsa.csv`, `fr015_fidelity.csv`, `fr013_base.ldg` | `test_fr023.pl` (reused from FR-013/FR-015/FR-016) |
 
 There is no `Makefile` or CI configuration.
 
@@ -94,9 +94,9 @@ There is no `Makefile` or CI configuration.
 | `Ledger/Transaction.pm` | Single transaction: date/state/payee/postings, file byte-position tracking (`bpos`/`epos`/`edit_pos`), matching logic |
 | `Ledger/Posting.pm` | Single posting (account + amount + commodity), serialization |
 | `Ledger/CSV.pm` | Parses CSV statements and `ledger csv` output; `detect($header)` returns matching institution module; `new($file, $args, %opts)` — factory: when `$args` is undef, peeks the header and returns the appropriate sub-object (`$mod->new($file, %opts)`); `parse($cb)` OO interface |
-| `Ledger/CSV/Fidelity.pm` | Fidelity brokerage CSV: `fingerprint()` + `config(account_map =>)` (keyed by account name) + `new`/`parse` OO interface |
-| `Ledger/CSV/HSA.pm` | HSA/benefit CSV: `fingerprint()` + `config()`, `running_balance` for BAL assertion + `new`/`parse` OO interface |
-| `Ledger/CSV/Coinbase.pm` | Coinbase Advanced Trade CSV: `fingerprint()` + `config()`, account from `#LedgerName:` + `new`/`parse` OO interface |
+| `Ledger/CSV/Fidelity.pm` | Fidelity brokerage CSV: `fingerprint()` + `config(account_map =>)` (keyed by account name) + `new`/`parse` OO interface; `type()` returns `'Fidelity'`; `account($val)` / `account_map($val)` instance setters |
+| `Ledger/CSV/HSA.pm` | HSA/benefit CSV: `fingerprint()` + `config()`, `running_balance` for BAL assertion + `new`/`parse` OO interface; `type()` returns `'HSA'`; `account($val)` instance setter |
+| `Ledger/CSV/Coinbase.pm` | Coinbase Advanced Trade CSV: `fingerprint()` + `config()`, account from `#LedgerName:` + `new`/`parse` OO interface; `type()` returns `'Coinbase'`; `account($val)` instance setter |
 | `Ledger/OFX.pm` | Parses OFX/QFX bank statement files; `new($file)` + `parse($cb)` OO interface |
 | `Ledger/JSON.pm` | Dispatches JSON to Plaid or Teller submodule; `new($file)` + `parse($cb)` OO interface |
 | `Ledger/JSON/Plaid.pm` | Parses Plaid API exports (banking + investment) |

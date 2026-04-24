@@ -4,15 +4,31 @@ use warnings;
 
 sub fingerprint { qr/^Timestamp,Transaction Type,Asset,Quantity Transacted/ }
 
+sub type { 'Coinbase' }
+
 sub new {
     my ($class, $file, %opts) = @_;
-    return bless { file => $file, config => $class->config(%opts) }, $class;
+    return bless {
+        file    => $file,
+        config  => $class->config(%opts),
+        account => $opts{account},
+    }, $class;
+}
+
+sub account {
+    my ($self, $val) = @_;
+    $self->{account} = $val if @_ > 1;
+    return $self->{account};
 }
 
 sub parse {
     my ($self, $callback) = @_;
     require Ledger::CSV;
-    return Ledger::CSV::parsefile($self->{file}, $self->{config}, $callback);
+    my $account = $self->{account};
+    my $cb = $account
+        ? sub { my $csv = shift; $csv->{account} ||= $account; $callback->($csv) }
+        : $callback;
+    return Ledger::CSV::parsefile($self->{file}, $self->{config}, $cb);
 }
 
 sub config {

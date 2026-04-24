@@ -4,15 +4,38 @@ use warnings;
 
 sub fingerprint { qr/^Run Date,Account,Account Number,Action/ }
 
+sub type { 'Fidelity' }
+
 sub new {
     my ($class, $file, %opts) = @_;
-    return bless { file => $file, config => $class->config(%opts) }, $class;
+    return bless {
+        file        => $file,
+        account_map => $opts{account_map} // {},
+        account     => $opts{account},
+    }, $class;
+}
+
+sub account {
+    my ($self, $val) = @_;
+    $self->{account} = $val if @_ > 1;
+    return $self->{account};
+}
+
+sub account_map {
+    my ($self, $val) = @_;
+    $self->{account_map} = $val if @_ > 1;
+    return $self->{account_map};
 }
 
 sub parse {
     my ($self, $callback) = @_;
     require Ledger::CSV;
-    return Ledger::CSV::parsefile($self->{file}, $self->{config}, $callback);
+    my $config  = $self->config(account_map => $self->{account_map});
+    my $account = $self->{account};
+    my $cb = $account
+        ? sub { my $csv = shift; $csv->{account} ||= $account; $callback->($csv) }
+        : $callback;
+    return Ledger::CSV::parsefile($self->{file}, $config, $cb);
 }
 
 sub config {
