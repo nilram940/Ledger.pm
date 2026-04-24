@@ -42,7 +42,6 @@ sub config {
             status            => 'Status',
             available_balance => 'Available Balance',
         },
-        running_balance => 'available_balance',
         process => sub {
             my $csv = shift;
             # account set from #LedgerName: at top of file
@@ -53,6 +52,10 @@ sub config {
             $csv->{quantity} = -abs($csv->{quantity} + 0)
                 if $csv->{transaction_type} =~ /\bcard\b/i;
             $csv->{payee} ||= $csv->{transaction_type};
+            $csv->{assert} = $csv->{available_balance} + 0
+                if $csv->{state} eq 'cleared'
+                && defined $csv->{available_balance}
+                && length $csv->{available_balance};
         },
     };
 }

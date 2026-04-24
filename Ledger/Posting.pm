@@ -5,7 +5,7 @@ use warnings;
 sub new{
     my $class=shift;
     my $self={};
-    @{$self}{qw(account quantity commodity cost note)}=@_;
+    @{$self}{qw(account quantity commodity cost note assert)}=@_;
     $self->{commodity}||='$';
     
     # my $self={ account   => "",
@@ -53,6 +53,7 @@ sub toString{
     if (length($self->{quantity})){
 	if ($self->{commodity} eq '$'){
 	    $str.=($assert ? '= ' : '').sprintf('$%0.2f',$self->{quantity});
+            $str.=sprintf(' = $%0.2f',$self->{assert}) if defined $self->{assert};
 	}else{
 	    my $commodity=$self->{commodity};
 	    $commodity = '"'.$commodity.'"' if $commodity =~/[^A-Z]/i;

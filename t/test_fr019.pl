@@ -51,6 +51,7 @@ sub check {
     my $pharm_date = $pharmacy ? strftime('%Y/%m/%d', localtime $pharmacy->{date}) : '(none)';
     my $eye_qty    = $eye      ? ($eye->getPosting(0)->{quantity} // 0) : undef;
     my $pend_qty   = $pending  ? ($pending->getPosting(0)->{quantity} // 0) : undef;
+    my $bal_475    = ($content =~ /= \$475\.00/);
     my $bal_395    = ($content =~ /= \$395\.00/);
     my $bal_345    = ($content =~ /= \$345\.00/);
 
@@ -79,7 +80,9 @@ sub check {
     printf "Pending Claim qty = -50.00:          %s  (want yes, got %s)\n",
         (defined $pend_qty && $pend_qty == -50.00) ? 'yes' : 'NO',
         $pend_qty // 'undef';
-    printf "Balance \$395.00 (last cleared):      %s  (want yes)\n",
+    printf "Balance \$475.00 inline (Pharmacy):    %s  (want yes)\n",
+        $bal_475 ? 'yes' : 'NO';
+    printf "Balance \$395.00 inline (Eye Doctor): %s  (want yes)\n",
         $bal_395 ? 'yes' : 'NO';
     printf "Balance \$345.00 (pending) absent:    %s  (want yes)\n",
         $bal_345 ? 'NO' : 'yes';
@@ -88,7 +91,7 @@ sub check {
         && $pharmacy->{state} eq 'cleared'
         && $eye && $eye_qty == -80.00
         && $pending && $pending->{state} eq 'pending' && $pend_qty == -50.00
-        && $bal_395 && !$bal_345) {
+        && $bal_475 && $bal_395 && !$bal_345) {
         print "PASS\n";
     } else {
         print "FAIL\n";

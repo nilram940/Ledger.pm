@@ -2016,7 +2016,52 @@ The ~Claimant~, ~Plan~, and ~Date of Service~ fields are HSA-specific
 metadata with no direct ledger equivalent; they could be stored as
 transaction notes if useful for later reconciliation.
 
-*** Implementation (Option A)
+*** Implementation (Option B)
+
+Option B (per-transaction inline assertion) was chosen over Option A.  Option
+A's ~running_balance~ key is still supported by ~parsefile~ for other callers,
+but ~Ledger::CSV::HSA~ no longer uses it.
+
+Three changes:
+
+- ~Posting.pm~: ~assert~ added as 6th positional field in ~new~; ~toString~
+  appends ~= $x.xx~ after the dollar amount when ~assert~ is defined.
+
+- ~Ledger.pm~ ~addStmtTran~: passes ~$stmttrn->{assert}~ as 6th arg to
+  ~addPosting~.
+
+- ~Ledger::CSV::HSA~ ~process~: sets ~$csv->{assert} = $csv->{available_balance} + 0~
+  for every cleared row.
+
+The resulting ledger entries look like:
+
+#+begin_example
+2026/03/05 * Pharmacy
+     Assets:HSA                                 $-25.00 = $475.00  ; ID: CSV-...
+     Expenses:Miscellaneous
+#+end_example
+
+**** Same-day ordering
+
+When multiple transactions share a date, ~update_file~'s date sort is stable
+and will preserve the CSV row order for same-day ties.  For a reverse-chron
+CSV (common), two same-day transactions arrive in reversed bank order, so the
+stable sort writes them in the wrong sequence — causing inline assertion
+failures because ledger evaluates assertions sequentially through the file.
+
+The fix: ~_sort_append~ uses the ~assert~ value as a descending tiebreaker for
+same-date transactions.  A higher post-transaction balance means the bank
+processed that transaction earlier (the account was less depleted), so sorting
+by ~assert~ descending recovers the correct intra-day sequence regardless of
+CSV row direction.
+
+This holds for net-debit accounts (like HSA) where the running balance falls
+monotonically through a day's transactions.  For an account with interleaved
+same-day deposits and withdrawals the assert-value tiebreaker could produce the
+wrong order; any such inconsistency surfaces as a ledger assertion failure,
+which is the appropriate signal for manual review.
+
+*** Former Option A documentation
 
 Two new keys added to ~Ledger::CSV::parsefile~ ~$args~:
 
