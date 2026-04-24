@@ -197,6 +197,7 @@ sub stmttrn{
     }
 
     $tran{date}=&getdate($arg->{dtposted});
+    $tran{source}='OFX';
     $tran{account}=$account;
     if ($arg->{memo} && $arg->{memo} !~/^\d+$/ &&
 	$arg->{memo} !~/^\w+$/){
@@ -216,6 +217,7 @@ sub inv{
     $data->{check}||=[];
     
     @tran{qw(id payee)}=@{$arg->{invtran}}{qw(fitid memo)};
+    $tran{source}='OFX';
     $tran{date}=&getdate($arg->{invtran}->{dttrade});
     my $secid=$arg->{secid}->{uniqueid};
     $commodity=$data->{ticker}->{$secid};

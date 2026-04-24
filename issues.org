@@ -690,11 +690,14 @@ billing cycles.
 :ID: BUG-010
 :END:
 :LOGBOOK:
+- Note [2026-04-24] OFX portion done: ~stmttrn~ and ~inv~ handlers in
+  ~Ledger::OFX~ set ~source='OFX'~; IDs written as ~OFX-{FITID}~;
+  ~bug010.ofx~ fixture and ~test_bug010_ofx.pl~ added.  Plaid/Teller
+  source prefixes still pending.
 - Note [2026-04-24] CSV portion done: ~Digest::MD5~ imported; ~makeid~ reads
   ~source~/~idlist~ from trdat; ~parsefile~ sets ~source='CSV'~ and
   ~idlist=[date,payee,qty]~ before process callback; fixtures bug011.ldg and
-  bug014.ldg updated to ~CSV-~ prefix; ~test_bug010.pl~ added.  OFX/Plaid/Teller
-  source prefixes still pending.
+  bug014.ldg updated to ~CSV-~ prefix; ~test_bug010.pl~ added.
 :END:
 
 Generated ID format: ~{initials}[-!]-[salt-]{FITID | date+amount}~

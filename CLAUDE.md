@@ -33,6 +33,7 @@ prints a one-line-per-test summary; on failure it re-prints the full output of f
 | `test_issue4.pl` | Issue 4a: pending→cleared not left in place; Issue 4b: CC import doesn't replace Checking split |
 | `test_issue5.pl` | Issue 5: pending transaction moved to cleared section (not overwritten in place) |
 | `test_bug010.pl` | BUG-010: two same-date/same-amount CSV rows without FITID both imported (no collision); IDs in `CSV-{hash}` format; second import deduplicates correctly |
+| `test_bug010_ofx.pl` | BUG-010 (OFX): OFX transactions written with `OFX-{FITID}` prefix (not account-initials); second import deduplicates correctly |
 | `test_bug011.pl` | BUG-011: balance assertion written even when `@append` is empty (all transactions deduplicated) |
 | `test_bug014.pl` | BUG-014: date comment not written when only balance entries added and `@append` is empty |
 | `test_fr013_ofx.pl` | FR-013: OFX parser — 2 transactions (payee, qty, date, check number), LEDGERBAL balance assertion |
@@ -63,6 +64,7 @@ Each test works on a copy of its fixtures in a temporary directory so originals 
 | `issue4b.ldg`, `issue4b-Visa.csv`, `issue4b-Checking.csv` | `test_issue4.pl` (4b) |
 | `issue5.ldg`, `issue5.csv` | `test_issue5.pl` |
 | `bug010.ldg`, `bug010.csv` | `test_bug010.pl` |
+| `bug010.ofx`, `fr013_base.ldg` | `test_bug010_ofx.pl` |
 | `bug011.ldg`, `bug011.csv` | `test_bug011.pl` |
 | `bug014.ldg`, `bug014.csv` | `test_bug014.pl` |
 | `fr013_base.ldg` | all `test_fr013_*.pl` tests (shared minimal ledger) |
