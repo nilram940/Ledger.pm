@@ -118,7 +118,7 @@ my %STATE=(
     'pending' => " ! "
     );
 sub toString{
-    my $self=shift;
+    my ($self, $opts) = @_;
     return unless $self->{date};
     if ($self->{text} && !$self->{edit}){
 	return $self->{text};
@@ -131,7 +131,7 @@ sub toString{
     $str.=$self->{payee};
     $str.='     ;'.$self->{note} if ($self->{note});
     $str.="\n";
-    $str.=join("\n",map {$_->toString} (@{$self->{postings}}))."\n";
+    $str.=join("\n",map {$_->toString($opts)} (@{$self->{postings}}))."\n";
     # if ($self->{text}){
     # 	my $orig=$self->{text};
     # 	$orig=~s/^/; /mg;

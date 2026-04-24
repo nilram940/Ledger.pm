@@ -136,11 +136,12 @@ sub check {
     my ($pharmacy) = grep { ($_->{payee}//'') eq 'Pharmacy'      } @$hsa;
     my ($eye)      = grep { ($_->{payee}//'') eq 'Eye Doctor'    } @$hsa;
     my ($pending)  = grep { ($_->{payee}//'') eq 'Pending Claim' } @$hsa;
-    my $pharm_qty    = $pharmacy ? $pharmacy->{quantity} : undef;
-    my $pharm_assert = $pharmacy ? $pharmacy->{assert}   : undef;
-    my $eye_qty      = $eye      ? $eye->{quantity}      : undef;
-    my $eye_assert   = $eye      ? $eye->{assert}        : undef;
-    my $pend_qty     = $pending  ? $pending->{quantity}  : undef;
+    my ($hsa_bal)  = grep { ($_->{cost}//'') eq 'BAL' } @$hsa;
+
+    my $pharm_qty   = $pharmacy ? $pharmacy->{quantity} : undef;
+    my $eye_qty     = $eye      ? $eye->{quantity}      : undef;
+    my $pend_qty    = $pending  ? $pending->{quantity}  : undef;
+    my $hsa_bal_qty = $hsa_bal  ? $hsa_bal->{quantity}  : undef;
 
     print "\n=== FR-023 OO IMPORTS RESULT ===\n";
 
@@ -162,21 +163,18 @@ sub check {
     printf "HSA: Pharmacy qty = -25.00:           %s  (want yes, got %s)\n",
         (defined $pharm_qty && $pharm_qty == -25.00) ? 'yes' : 'NO',
         $pharm_qty // 'undef';
-    printf "HSA: Pharmacy assert = 475.00:        %s  (want yes, got %s)\n",
-        (defined $pharm_assert && $pharm_assert == 475.00) ? 'yes' : 'NO',
-        $pharm_assert // 'undef';
     printf "HSA: Eye Doctor qty = -80.00:         %s  (want yes, got %s)\n",
         (defined $eye_qty && $eye_qty == -80.00) ? 'yes' : 'NO',
         $eye_qty // 'undef';
-    printf "HSA: Eye Doctor assert = 395.00:      %s  (want yes, got %s)\n",
-        (defined $eye_assert && $eye_assert == 395.00) ? 'yes' : 'NO',
-        $eye_assert // 'undef';
     printf "HSA: Pending Claim state = pending:   %s  (want yes, got %s)\n",
         ($pending && $pending->{state} eq 'pending') ? 'yes' : 'NO',
         $pending ? ($pending->{state} || 'uncleared') : '(none)';
     printf "HSA: Pending Claim qty = -50.00:      %s  (want yes, got %s)\n",
         (defined $pend_qty && $pend_qty == -50.00) ? 'yes' : 'NO',
         $pend_qty // 'undef';
+    printf "HSA: balance qty = 395.00:            %s  (want yes, got %s)\n",
+        (defined $hsa_bal_qty && $hsa_bal_qty == 395.00) ? 'yes' : 'NO',
+        $hsa_bal_qty // 'undef';
 
     my @ldg_txns    = grep { $_->{date} } $ledger->getTransactions();
     my ($ldg_coffee) = grep { $_->{payee} eq 'Coffee Shop' } @ldg_txns;
@@ -192,11 +190,10 @@ sub check {
         && $hardware_num && $hardware_num eq '1001'
         && defined $ofx_bal_qty  && $ofx_bal_qty  == 552.50
         && defined $pharm_qty    && $pharm_qty    == -25.00
-        && defined $pharm_assert && $pharm_assert == 475.00
         && defined $eye_qty      && $eye_qty      == -80.00
-        && defined $eye_assert   && $eye_assert   == 395.00
         && $pending && $pending->{state} eq 'pending'
         && defined $pend_qty     && $pend_qty     == -50.00
+        && defined $hsa_bal_qty  && $hsa_bal_qty  == 395.00
         && defined $ldg_coffee_qty && $ldg_coffee_qty == -5.50) {
         print "PASS\n";
     } else {

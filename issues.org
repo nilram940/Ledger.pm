@@ -1131,6 +1131,75 @@ environment.  Additionally, ~getinsertionpoints~ should handle the
 no-transactions case gracefully, falling back to EOF insertion for all
 states.
 
+** DONE ~Ledger::XML~ is unreachable dead code                             :bug:
+:PROPERTIES:
+:ID: BUG-022
+:END:
+:LOGBOOK:
+- State "DONE" from "TODO" [2026-04-24]
+:END:
+
+~Ledger::XML~ parses ~ledger xml~ output but has no callers and predates the
+current ~ledger csv~ read interface.  ~Ledger::fromXML~ (the only entry point)
+was itself uncalled anywhere in the project.  ~Posting::fromXMLstruct~ was a
+companion with the same status.
+
+The module also contained dead code internally: ~oldchar()~ was defined but
+never registered as a handler (replaced by ~char()~), and the ~gettransinfo()~
+call in ~end()~ was commented out.  It did not follow the OO ~new~ / ~parse~
+interface established by FR-023.  There were no tests.
+
+*** Fix
+
+Removed ~Ledger/XML.pm~, ~Ledger::fromXML~, ~Posting::fromXMLstruct~, and the
+~use Ledger::XML~ import in ~Ledger.pm~.  Dropped ~XML::Parser~ from the
+dependency list in ~CLAUDE.md~.
+
+** TODO General dead code and unused import cleanup                        :bug:
+:PROPERTIES:
+:ID: BUG-023
+:END:
+
+Broad sweep of commented-out code, ~if (0)~ guards, dead functions, unused
+module imports, and debug prints left over from development.  None affect
+correctness; all add noise.
+
+*** Ledger.pm
+
+- ~#use Data::Dumper;~ — already commented out, delete the line
+- Commented-out old per-account balance block and ~#print STDERR Dumper~ below it
+- ~use Fcntl qw(SEEK_SET SEEK_CUR SEEK_END)~ — only ~SEEK_SET~ is used; trim the import list
+- ~sub transfer2~ — never called anywhere in the project
+
+*** Ledger/Transaction.pm
+
+- ~use Fcntl qw(SEEK_SET SEEK_CUR SEEK_END)~ — same as above, trim to ~SEEK_SET~
+- Commented-out ~new~ hash template in ~new~ (superseded by inline init)
+- Commented-out ~$self->{text}~ block inside ~toString~
+- ~#print STDERR $self->{payee}."\n";~
+- ~if (0) { print "Found Match..." }~ debug block (always-false, never runs)
+- Two commented-out ~#print "lim/num: ..."~ lines in ~distance~
+
+*** Ledger/Posting.pm
+
+- Commented-out ~new~ hash template (superseded by inline init)
+
+*** Ledger/OFX.pm
+
+- ~use Data::Dumper~ — only referenced by ~sub dump~, which is itself dead
+- ~#    'invbal' => \&dump,~ — commented-out handler reference
+- ~#print $body;~ in ~parsebody~
+- ~sub dump~ — ~%HANDLER~ registration is commented out; never reachable
+- ~#print Dumper($data->{prices});~ in ~stop~
+- ~#return if $data->{type};# eq 'inv';~ in ~stmttrn~
+- ~if (0 && ...)~ dead branch in ~inv~; keep only the else body
+
+*** Ledger/JSON/Teller.pm
+
+- ~use Data::Dumper~ — only used in debug prints being removed
+- Commented-out counterparty block
+- Trailing ~#if $transaction->{pending_transaction_id};~ comment
+- ~print STDERR "Updating lasttrans:..."~ and ~print STDERR Dumper(...)~ debug prints
 
 * Feature Requests
 
@@ -2016,52 +2085,40 @@ The ~Claimant~, ~Plan~, and ~Date of Service~ fields are HSA-specific
 metadata with no direct ledger equivalent; they could be stored as
 transaction notes if useful for later reconciliation.
 
-*** Implementation (Option B)
+*** Implementation
 
-Option B (per-transaction inline assertion) was chosen over Option A.  Option
-A's ~running_balance~ key is still supported by ~parsefile~ for other callers,
-but ~Ledger::CSV::HSA~ no longer uses it.
+Option A (~running_balance~) is active.  Option B infrastructure
+(~assert~ field on postings) is implemented but not printed by default.
 
-Three changes:
+**** Option A (active)
 
-- ~Posting.pm~: ~assert~ added as 6th positional field in ~new~; ~toString~
-  appends ~= $x.xx~ after the dollar amount when ~assert~ is defined.
+~Ledger::CSV::HSA~ uses ~running_balance => 'available_balance'~.  After all
+rows are processed, ~parsefile~ emits a ~{cost=>'BAL', quantity=>$rb_val,
+date=>$rb_date}~ entry via the existing ~addStmtBal~ path — a single balance
+assertion at the end of the import block.
 
-- ~Ledger.pm~ ~addStmtTran~: passes ~$stmttrn->{assert}~ as 6th arg to
-  ~addPosting~.
+**** Option B infrastructure (latent)
 
-- ~Ledger::CSV::HSA~ ~process~: sets ~$csv->{assert} = $csv->{available_balance} + 0~
-  for every cleared row.
+The ~assert~ field is populated on every cleared posting via ~addStmtTran~
+(which passes ~$stmttrn->{assert}~ to ~addPosting~), and ~Ledger::CSV::HSA~
+sets ~$csv->{assert} = $csv->{available_balance} + 0~ for every cleared row.
+The value is stored on the posting object and preserved in the Storable cache,
+but is not written to the ~.dat~ file unless the caller explicitly passes
+~{ assert => 1 }~ to ~toString~.
 
-The resulting ledger entries look like:
+- ~Posting::toString($opts)~: appends ~= $x.xx~ only when
+  ~$opts && $opts->{assert}~ is true.
 
-#+begin_example
-2026/03/05 * Pharmacy
-     Assets:HSA                                 $-25.00 = $475.00  ; ID: CSV-...
-     Expenses:Miscellaneous
-#+end_example
+- ~Transaction::toString($opts)~: forwards ~$opts~ to each
+  ~Posting::toString~.
 
-**** Same-day ordering
+To print inline assertions on all transactions in an append run, pass
+~{ assert => 1 }~ to ~$tx->toString~ at the write site in ~update_file~.
+To print only the last transaction's assertion (a useful balance checkpoint),
+pop the last element of the sorted ~@cleared~ list and call
+~$last->toString({ assert => 1 })~ while calling plain ~toString~ on the rest.
 
-When multiple transactions share a date, ~update_file~'s date sort is stable
-and will preserve the CSV row order for same-day ties.  For a reverse-chron
-CSV (common), two same-day transactions arrive in reversed bank order, so the
-stable sort writes them in the wrong sequence — causing inline assertion
-failures because ledger evaluates assertions sequentially through the file.
-
-The fix: ~_sort_append~ uses the ~assert~ value as a descending tiebreaker for
-same-date transactions.  A higher post-transaction balance means the bank
-processed that transaction earlier (the account was less depleted), so sorting
-by ~assert~ descending recovers the correct intra-day sequence regardless of
-CSV row direction.
-
-This holds for net-debit accounts (like HSA) where the running balance falls
-monotonically through a day's transactions.  For an account with interleaved
-same-day deposits and withdrawals the assert-value tiebreaker could produce the
-wrong order; any such inconsistency surfaces as a ledger assertion failure,
-which is the appropriate signal for manual review.
-
-*** Former Option A documentation
+*** Option A documentation
 
 Two new keys added to ~Ledger::CSV::parsefile~ ~$args~:
 
@@ -2535,28 +2592,6 @@ to the appropriate OO parser.  ~Fidelity->config(account_map =>)~ now keys on
 the human-readable ~Account~ column name rather than the ~Account Number~
 field.  Test: ~test_fr023.pl~.
 
-** TODO Ledger::XML is unreachable dead code                              :bug:
-:PROPERTIES:
-:ID: BUG-022
-:END:
-
-~Ledger::XML~ parses ~ledger xml~ output but has no callers and predates the
-current ~ledger csv~ read interface.  ~Ledger::fromXML~ (the only entry point,
-~Ledger.pm:112~) is itself uncalled anywhere in the project.
-~Posting::fromXMLstruct~ (~Ledger/Posting.pm:36~) is a companion with the same
-status.
-
-The module also contains dead code internally: ~oldchar()~ is defined but never
-registered as a handler (it was replaced by ~char()~), and the ~gettransinfo()~
-call in ~end()~ is commented out.
-
-It does not follow the OO ~new~ / ~parse~ interface established for all other
-parsers in FR-023.  There are no tests.
-
-Decision needed: remove ~Ledger::XML~, ~Ledger::fromXML~,
-~Posting::fromXMLstruct~, and the ~use Ledger::XML~ import in ~Ledger.pm~ — or
-document a concrete use case that justifies keeping and modernising it.
-
 ** DONE ~fromStmt~ accepts parser objects                             :feature:
 :PROPERTIES:
 :ID: FR-024
@@ -2573,4 +2608,165 @@ such method) to obtain the account name, builds the callback via
 ~importCallback~, then calls ~$stmt->parse($callback)~ directly.  The
 ~%csv_config~ and ~%module_opts~ arguments are unused in this path.  The
 filename path is unchanged.
+
+** TODO Split Ledger.pm: extract file-writing logic into Ledger::Writer  :feature:
+:PROPERTIES:
+:ID: FR-025
+:END:
+
+~Ledger.pm~ is 866 lines of a single ~package Ledger;~.  The file-writing
+subsystem is the largest self-contained chunk (~204 lines) and a strong
+extraction candidate.
+
+*** Functions to move
+
+| Function | Lines | Role |
+|----------+-------+------|
+| ~update~ | 656–693 | Orchestrates per-file update calls |
+| ~update_file~ | 695–852 | Core byte-position merge and rename logic |
+
+~update_file~ (157 lines) reads the old file, applies edits at tracked byte
+offsets, inserts new transactions at cleared/pending/uncleared insertion
+points, writes to a ~.tmp$$$~ temp file, renames into place, and keeps a ~.bak~
+safety copy.  It is the most complex function in the project.
+
+*** Implementation pattern
+
+The new file declares ~package Ledger;~ (not ~package Ledger::Writer;~), so all
+three functions remain methods on the ~Ledger~ object.  Call sites and tests
+require zero changes.
+
+#+begin_src perl
+# Ledger/Writer.pm
+package Ledger;
+
+sub update      { ... }
+sub update_file { ... }
+
+1;
+#+end_src
+
+~Ledger.pm~ loads it at compile time:
+
+#+begin_src perl
+use Ledger::Writer;
+#+end_src
+
+*** Verification
+
+#+begin_src sh
+perl -c Ledger.pm/Ledger.pm
+cd Ledger.pm/t && perl run_tests.pl
+#+end_src
+
+All existing tests exercise ~update_file~ indirectly through ~update~; no new
+tests are needed for a pure code-move.
+
+** TODO Split Ledger.pm: extract import pipeline into Ledger::Importer   :feature:
+:PROPERTIES:
+:ID: FR-026
+:END:
+
+Related to FR-011 (which proposes separating the parser layer from the import
+layer).  This is a narrower, lower-risk change: it moves the statement-import
+functions out of ~Ledger.pm~ without changing the parser/import boundary.
+
+*** Functions to move
+
+| Function | Lines | Role |
+|----------+-------+------|
+| ~_buildTransfer~ | 190–210 | Detects transfer pairs during cold load |
+| ~importCallback~ | 212–222 | Factory: builds per-statement routing closure |
+| ~fromStmt~ | 224–270 | Entry point for importing a statement file or object |
+| ~StmtHandler~ | 273–277 | Dispatches to balance vs. transaction handler |
+| ~addStmtBal~ | 279–300 | Records a balance assertion from the statement |
+| ~addStmtTran~ | 303–372 | Dedup, payee lookup, matching, and acceptance |
+
+*** Implementation pattern
+
+Same as FR-025: ~package Ledger;~ in ~Ledger/Importer.pm~, loaded via
+~use Ledger::Importer;~ in ~Ledger.pm~.
+
+~addStmtTran~ reads ~$self->{_id}~, ~$self->{_payeetab}~, ~$self->{transactions}~,
+and ~$self->{_gentable}~ — all normal ~$self~ hash accesses that work identically
+as methods in a same-package file.
+
+Depends on FR-027 (Transfer) and FR-028 (Classifier) being extracted first, or
+extracted in the same commit, so that ~addStmtTran~ does not need to reach across
+to functions that no longer live in ~Ledger.pm~.
+
+** TODO Split Ledger.pm: extract transfer matching into Ledger::Transfer  :feature:
+:PROPERTIES:
+:ID: FR-027
+:END:
+
+Transfer matching is a coherent algorithm unit called from both the cold-load
+path (~_buildTransfer~) and the import pipeline (~addStmtTran~ → ~transfer~).
+
+*** Functions to move
+
+| Function | Lines | Role |
+|----------+-------+------|
+| ~transfer~ | 439–499 | Primary transfer matcher (cost + time window) |
+| ~transfer2~ | 501–527 | Secondary matcher (date+amount index) |
+| ~makeid~ | 529–552 | Generates stable dedup IDs for transfer pairing |
+
+~makeid~ belongs here because it generates the IDs used for transfer
+deduplication and is called from ~addStmtTran~ after the transfer path.
+
+*** Implementation pattern
+
+Same as FR-025: ~package Ledger;~ in ~Ledger/Transfer.pm~.
+
+*** Notes
+
+BUG-010 has an open item on Plaid/Teller source prefixes in ~makeid~.  That
+work should land before or together with this extraction so the function is
+touched only once.
+
+** TODO Split Ledger.pm: extract classifier into Ledger::Classifier      :feature:
+:PROPERTIES:
+:ID: FR-028
+:END:
+
+The Bayesian frequency-table classifier is a self-contained subsystem built
+once at construction and consulted during import.
+
+*** Functions to move
+
+| Function | Lines | Role |
+|----------+-------+------|
+| ~gentable~ | 554–600 | Builds account→payee→destination frequency table |
+| ~_token_lookup~ | 602–622 | Token-based payee substring matching |
+
+~_read_payeetab~ (54–62, called from ~new~) feeds data into the same subsystem
+but is small and lives at construction time; leave it in the core unless the
+split feels incomplete without it.
+
+*** Implementation pattern
+
+Same as FR-025: ~package Ledger;~ in ~Ledger/Classifier.pm~.
+
+~gentable~ reads ~$self->{transactions}~ and writes ~$self->{_gentable}~.
+~_token_lookup~ reads ~$self->{_payeetab}~.  Both are plain ~$self~ accesses;
+no signature changes required.
+
+*** Outcome
+
+After all four splits (FR-025 – FR-028), ~Ledger.pm~ retains:
+
+| Function | Lines | Role |
+|----------+-------+------|
+| ~new~ | 16–52 | Constructor, cache load/save |
+| ~_read_payeetab~ | 54–62 | Load payee mapping |
+| ~_loadFromCLI~ | 112–188 | Parse ~ledger csv~ output |
+| ~addTransaction~ | 66–76 | Add transaction to collection |
+| ~addBalance~ | 78–110 | Track balance assertions |
+| ~getTransactions~ | 417–438 | Retrieve filtered transactions |
+| ~getinsertionpoints~ | 374–407 | Compute per-state file routing |
+| ~insertionFileFor~ | 409–414 | Get target file for a state |
+| ~toString~ | 624–629 | Serialize all transactions |
+| ~toString2~ | 631–653 | Filtered serialize with state sections |
+
+Approximately 250 lines of core orchestration.
 

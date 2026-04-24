@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Dependencies
 
-Perl modules required: `Storable`, `YAML::Tiny`, `Text::CSV`, `Date::Parse`, `JSON`, `XML::Parser`, `POSIX`, `Fcntl`, `Digest::MD5`
+Perl modules required: `Storable`, `YAML::Tiny`, `Text::CSV`, `Date::Parse`, `JSON`, `POSIX`, `Fcntl`, `Digest::MD5`
 
 External tool: `ledger` CLI (used via subprocess in `Ledger::_loadFromCLI` to populate transactions from an existing `.dat` file, unless a fresh Storable object cache exists)
 
@@ -94,7 +94,7 @@ There is no `Makefile` or CI configuration.
 |--------|------|
 | `Ledger.pm` | Core orchestrator: loads existing ledger (via Storable cache or `ledger csv`), manages transaction list, runs import pipeline, writes changes back |
 | `Ledger/Transaction.pm` | Single transaction: date/state/payee/postings, file byte-position tracking (`bpos`/`epos`/`edit_pos`), matching logic |
-| `Ledger/Posting.pm` | Single posting (account + amount + commodity), serialization |
+| `Ledger/Posting.pm` | Single posting (account + amount + commodity), serialization. `toString($opts)` accepts `{ assert => 1 }` to append `= $x.xx` from the `assert` field; default omits it. `Transaction::toString($opts)` forwards `$opts` to each posting. |
 | `Ledger/CSV.pm` | Parses CSV bank statement files; `detect($header)` returns matching institution module; `new($file, $args, %opts)` — factory: when `$args` is undef, peeks the header and returns the appropriate sub-object (`$mod->new($file, %opts)`); `parse($cb)` OO interface; loaded lazily by `fromStmt` |
 | `Ledger/CSV/Fidelity.pm` | Fidelity brokerage CSV: `fingerprint()` + `config(account_map =>)` (keyed by account name) + `new`/`parse` OO interface; `type()` returns `'Fidelity'`; `account($val)` / `account_map($val)` instance setters |
 | `Ledger/CSV/HSA.pm` | HSA/benefit CSV: `fingerprint()` + `config()`, `running_balance` for BAL assertion + `new`/`parse` OO interface; `type()` returns `'HSA'`; `account($val)` instance setter |

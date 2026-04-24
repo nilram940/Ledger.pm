@@ -33,19 +33,8 @@ sub getid{
         return "";
     }
 }
-sub fromXMLstruct{
-    my $self=shift;
-    my $xml=shift;
-    $self->{account}=$xml->{account}->{name};
-    $self->{note}=$xml->{note};
-    $self->{quantity}=$xml->{'post-amount'}->{amount}->{quantity};
-    $self->{commodity}=$xml->{'post-amount'}->{amount}->{commodity}->{symbol};
-    $self->{cost}=$xml->{cost}?$xml->{cost}->{quantity}:0;
-    return $self;
-}
-
 sub toString{
-    my $self=shift;
+    my ($self, $opts) = @_;
     my $bal=($self->{cost} && $self->{cost} eq 'BAL');
     my $assert=($self->{cost} && $self->{cost} eq 'ASSERT');
     my $str=$bal?sprintf('     %-40s   = ','['.$self->{account}.']'):
@@ -53,7 +42,7 @@ sub toString{
     if (length($self->{quantity})){
 	if ($self->{commodity} eq '$'){
 	    $str.=($assert ? '= ' : '').sprintf('$%0.2f',$self->{quantity});
-            $str.=sprintf(' = $%0.2f',$self->{assert}) if defined $self->{assert};
+            $str.=sprintf(' = $%0.2f',$self->{assert}) if defined $self->{assert} && $opts && $opts->{assert};
 	}else{
 	    my $commodity=$self->{commodity};
 	    $commodity = '"'.$commodity.'"' if $commodity =~/[^A-Z]/i;

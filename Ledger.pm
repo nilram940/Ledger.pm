@@ -7,7 +7,6 @@ use YAML::Tiny;
 use Ledger::Transaction;
 use Ledger::OFX;
 use Ledger::JSON;
-use Ledger::XML;
 use POSIX qw(strftime);
 use Date::Parse;
 use Text::CSV;
@@ -108,13 +107,6 @@ sub addBalance{
     # }
     #print STDERR Dumper ($self->{balance});
     return $bal->{$commodity};
-}
-
-sub fromXML{
-    my $self=shift;
-    my $xml=shift;
-    Ledger::XML::parse($self,$xml);
-    return $self
 }
 
 sub _loadFromCLI {
@@ -700,18 +692,6 @@ sub update{
     }
 }
 
-sub _sort_append {
-    return sort {
-        $a->{date} <=> $b->{date} || do {
-            my ($pa, $pb) = ($a->getPosting(0), $b->getPosting(0));
-            (defined $pa && defined $pb
-                && defined $pa->{assert} && defined $pb->{assert})
-                ? $pb->{assert} <=> $pa->{assert}
-                : 0;
-        }
-    } @_;
-}
-
 sub update_file{
     my $self=shift;
     my $file=shift;
@@ -808,7 +788,7 @@ sub update_file{
                 # (in-place edit or bpos skip), emit pending cleared appends and
                 # balance entries here instead of at EOF.
                 if ($is_cleared_file && $pos == $self->{cleared_pos}) {
-                    my @to_write = _sort_append(@{$append_for{cleared}});
+                    my @to_write = sort { $a->{date} <=> $b->{date} } @{$append_for{cleared}};
                     my @bal = $balance_written ? () : @balance_entries;
                     if (@to_write || @bal) {
                         print $writeh "\n; ".localtime."\n\n" if @to_write;
@@ -820,7 +800,7 @@ sub update_file{
             } elsif (exists $sentinels{$pos}) {
                 # Sentinel: write each state's transactions at this position
                 for my $state (@{$sentinels{$pos}}) {
-                    my @to_write = _sort_append(@{$append_for{$state}});
+                    my @to_write = sort { $a->{date} <=> $b->{date} } @{$append_for{$state}};
                     my @bal = ($state eq 'cleared') ? @balance_entries : ();
                     next unless @to_write || @bal;
                     print $writeh "\n; ".localtime."\n\n" if @to_write;
@@ -852,9 +832,9 @@ sub update_file{
             print $writeh '; '.localtime."\n\n" if @cleared || @uncleared;
             print $writeh join("\n",
                 (map { $_->toString }
-                    _sort_append(@cleared),
+                    (sort { $a->{date} <=> $b->{date} } @cleared),
                     @remaining_bal,
-                    _sort_append(@uncleared)
+                    (sort { $a->{date} <=> $b->{date} } @uncleared)
                 ))."\n\n";
         }
         close($writeh);

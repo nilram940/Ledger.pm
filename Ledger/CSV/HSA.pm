@@ -2,7 +2,7 @@ package Ledger::CSV::HSA;
 use strict;
 use warnings;
 
-sub fingerprint { qr/^Transaction Date,Transaction Type,Claimant,Description/ }
+sub fingerprint { qr/^"Transaction Date","Transaction Type",Claimant,Description/ }
 
 sub type { 'HSA' }
 
@@ -57,6 +57,7 @@ sub config {
                 && defined $csv->{available_balance}
                 && length $csv->{available_balance};
         },
+        running_balance => 'available_balance',
     };
 }
 

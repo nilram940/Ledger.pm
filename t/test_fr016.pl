@@ -24,20 +24,16 @@ my $csv_config = {
     HSA => {
         header_map => {
             date              => 'Transaction Date',
-            transaction_type  => 'Transaction Type',
             payee             => 'Description',
             quantity          => 'Amount',
             status            => 'Status',
             available_balance => 'Available Balance',
         },
+        running_balance => 'available_balance',
         process => sub {
             my $csv = shift;
             # account comes from #LedgerName: in the CSV file
             $csv->{state} = ($csv->{status} =~ /pending/i) ? 'pending' : 'cleared';
-            $csv->{assert} = $csv->{available_balance} + 0
-                if $csv->{state} eq 'cleared'
-                && defined $csv->{available_balance}
-                && length $csv->{available_balance};
         },
     },
 };
@@ -76,7 +72,6 @@ sub check {
 
     my $pend_qty   = $pending  ? ($pending->getPosting(0)->{quantity} // 0) : undef;
 
-    my $bal_475    = ($content =~ /= \$475\.00/);
     my $bal_395    = ($content =~ /= \$395\.00/);
     my $bal_345    = ($content =~ /= \$345\.00/);
 
@@ -110,9 +105,7 @@ sub check {
         (defined $pend_qty && $pend_qty == -50.00) ? 'yes' : 'NO',
         $pend_qty // 'undef';
 
-    printf "Balance \$475.00 inline (Pharmacy):    %s  (want yes)\n",
-        $bal_475 ? 'yes' : 'NO';
-    printf "Balance \$395.00 inline (Eye Doctor): %s  (want yes)\n",
+    printf "Balance \$395.00 (last cleared):      %s  (want yes)\n",
         $bal_395 ? 'yes' : 'NO';
     printf "Balance \$345.00 (pending) absent:    %s  (want yes)\n",
         $bal_345 ? 'NO' : 'yes';
@@ -121,7 +114,7 @@ sub check {
         && $pharmacy->{state} eq 'cleared'
         && $eye && $eye_qty == -80.00 && $eye_date eq '2026/03/12'
         && $pending && $pending->{state} eq 'pending' && $pend_qty == -50.00
-        && $bal_475 && $bal_395 && !$bal_345) {
+        && $bal_395 && !$bal_345) {
         print "PASS\n";
     } else {
         print "FAIL\n";
