@@ -13,7 +13,7 @@ The `Ledger` module is a Perl-based personal accounting system that reads, parse
 | `Ledger` | Core ledger object: transaction management, import orchestration, file writing |
 | `Ledger::Transaction` | Represents a single transaction with postings, state, and file positions |
 | `Ledger::Posting` | Represents a single posting (account + amount) within a transaction |
-| `Ledger::CSV` | Parses CSV statement files and the `ledger csv` command output |
+| `Ledger::CSV` | Parses CSV bank statement files; loaded lazily by `fromStmt` |
 | `Ledger::OFX` | Parses OFX/QFX bank statement files |
 | `Ledger::JSON` | Dispatches JSON parsing to Plaid or Teller submodules |
 | `Ledger::JSON::Plaid` | Parses Plaid API JSON exports (banking + investment accounts) |
@@ -191,6 +191,26 @@ $ledger->fromXML($xml_string);
 
 ---
 
+#### `_loadFromCLI($file)`
+
+Private. Called by `new()`. Runs `ledger csv` with a custom prepend format and populates the ledger object with the resulting transactions and postings.
+
+Custom fields extracted per posting:
+
+```
+transaction_id, file, bpos, epos, xnote, ID_tag, price, date,
+code, payee, account, commodity, amount, state, note
+```
+
+**Transfer store population**: pre-populates `$self->{transfer}` so that the current import session can match against existing half-transfers. Two kinds of postings are added:
+
+- `Equity:Transfers:$tag` postings — parked placeholders from a previous session. A negated copy (sign-flipped quantity) is stored so that an incoming same-sign posting cancels it.
+- `Assets` or `Liabilities` postings with no `ID:` note — transfers where one side was imported without an ID (e.g. a manually-entered transfer). The last component of the account name is used as the tag, and a negated copy is stored.
+
+In both cases the negated copy ensures `transfer()`'s matching condition (`abs(cost_A + cost_B) < 0.0001`) evaluates to zero when the opposing side arrives.
+
+---
+
 ### Internal Helpers
 
 #### `makeid($account, \%stmttrn)`
@@ -339,23 +359,7 @@ Serializes the posting to a Ledger-CLI posting line. Handles:
 
 ## `Ledger::CSV`
 
-### `ledgerCSV($ledger, $file)`
-
-Runs `ledger csv` with custom format fields and populates a `Ledger` object with the resulting transactions and postings. Called automatically by `Ledger->new`.
-
-Custom fields extracted per posting:
-
-```
-transaction_id, file, bpos, epos, xnote, ID_tag, price, date,
-code, payee, account, commodity, amount, state, note
-```
-
-**Transfer store population**: while loading, `ledgerCSV` pre-populates `$ledger->{transfer}` so that the current import session can match against existing half-transfers in the ledger file. Two kinds of postings are added:
-
-- `Equity:Transfers:$tag` postings — these are parked placeholders from a previous session. The tag is extracted from the account name, and a negated copy of the posting (sign-flipped quantity) is stored so that an incoming same-sign posting cancels it.
-- `Assets` or `Liabilities` postings with no `ID:` note — these belong to transfers where one side was imported without an ID (e.g. a manually-entered transfer where only the bank side has an ID). The last component of the account name is used as the tag, and again a negated copy is stored.
-
-In both cases the negated copy is stored so that `transfer()`'s matching condition (`abs(cost_A + cost_B) < 0.0001`) evaluates to zero when the opposing side arrives.
+Loaded lazily by `fromStmt` when a `.csv` statement file is processed. Not loaded during `Ledger->new`.
 
 ### `parsefile($file, \%args, $callback)`
 
