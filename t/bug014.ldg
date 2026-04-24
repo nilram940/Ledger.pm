@@ -8,7 +8,7 @@
 ; without a preceding date comment.
 
 2026/01/15 * Coffee Shop
-    Assets:Checking                    -$5.00  ; ID: C-CHK-001
+    Assets:Checking                    -$5.00  ; ID: CSV-CHK-001
     Expenses:Dining
 
 2026/01/20 ! Pending Purchase

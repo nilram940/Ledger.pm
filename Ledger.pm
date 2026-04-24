@@ -10,6 +10,7 @@ use Ledger::JSON;
 use Ledger::XML;
 use Ledger::CSV;
 use POSIX qw(strftime);
+use Digest::MD5 qw(md5_base64);
 #use Data::Dumper;
 
 sub new{
@@ -424,14 +425,21 @@ sub transfer2{
 sub makeid{
     my $account=shift;
     my $trdat=shift;
-    my $id=(split(/:/,$account))[-1];
-    $id=join ("", (map {substr ($_,0,1)} split (/\s+/, $id)));
+    my $id;
+    if ($trdat->{source}){
+        $id=$trdat->{source};
+    }else{
+        $id=(split(/:/,$account))[-1];
+        $id=join ("", (map {substr ($_,0,1)} split (/\s+/, $id)));
+    }
     $id.='!' if $trdat->{state} && ($trdat->{state} eq 'pending');
     $id.='-';
     $id.=$trdat->{salt}.'-' if $trdat->{salt};
     
     if ($trdat->{id}){
 	$id.=$trdat->{id};
+    }elsif ($trdat->{idlist}){
+        $id.=md5_base64(join(",", @{$trdat->{idlist}}));
     }else{
 	$id.=strftime('%Y/%m/%d', localtime $trdat->{date}).
 	    '+$'.sprintf('%.02f',$trdat->{quantity});

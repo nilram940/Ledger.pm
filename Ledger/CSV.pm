@@ -74,6 +74,8 @@ sub parsefile{
 	$csv{payee}=~s/^\s*//;
 	$csv{payee}=~s/~.*$//;
         $csv{account} ||= $ledgername if $ledgername;
+        $csv{source} = 'CSV';
+        $csv{idlist} = [$csv{date}, $csv{payee}, $csv{quantity}] unless $csv{id};
         &{$args->{process}}(\%csv) if $args->{process};
         if ($rb_field && defined $csv{$rb_field} && length $csv{$rb_field}
             && ($csv{state}//'cleared') ne 'pending') {

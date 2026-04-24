@@ -689,6 +689,13 @@ billing cycles.
 :PROPERTIES:
 :ID: BUG-010
 :END:
+:LOGBOOK:
+- Note [2026-04-24] CSV portion done: ~Digest::MD5~ imported; ~makeid~ reads
+  ~source~/~idlist~ from trdat; ~parsefile~ sets ~source='CSV'~ and
+  ~idlist=[date,payee,qty]~ before process callback; fixtures bug011.ldg and
+  bug014.ldg updated to ~CSV-~ prefix; ~test_bug010.pl~ added.  OFX/Plaid/Teller
+  source prefixes still pending.
+:END:
 
 Generated ID format: ~{initials}[-!]-[salt-]{FITID | date+amount}~
 
@@ -951,11 +958,16 @@ while keeping the sign.  Positive amounts are unaffected.
 :END:
 
 Vendors occasionally place holds on cards that appear as pending
-transactions in Plaid (and possibly Teller).  When the hold is
-released without posting, the transaction simply disappears from
-subsequent statement fetches.  The importer has no deletion event to
-process — it only sees new or updated transactions — so the orphaned
-pending entry remains in the ledger until manually removed.
+transactions in Plaid.  When the hold is released without posting,
+the transaction simply disappears from subsequent statement fetches.
+The importer has no deletion event to process — it only sees new or
+updated transactions — so the orphaned pending entry remains in the
+ledger until manually removed.
+
+Note: Teller has not been used in production; whether it exposes the
+same disappearing-hold behaviour is unknown.  The fix design below
+assumes a complete-snapshot source; verify Teller's pending semantics
+before enabling the absence scan for Teller imports.
 
 This is distinct from BUG-005, where a pending transaction /posts/ but
 its ID changes between the pending and posted states, causing a match
@@ -994,6 +1006,67 @@ provides a date-bounded window and may not include all pending
 transactions; CSV almost certainly does not.  A ~pending_snapshot =>
 1~ option to ~fromStmt~ (or inferred from the ~.json~ extension) would
 gate the scan.
+
+** TODO Debug and dead code in Ledger::JSON::Teller                   :bug:
+:PROPERTIES:
+:ID: BUG-020
+:END:
+
+~Ledger/JSON/Teller.pm~ contains development leftovers that were never cleaned
+up, likely because the module was never exercised against real data:
+
+1. ~use Data::Dumper~ import and two ~print STDERR~ calls in ~addtransactions~
+   fire on every cleared transaction during a real import:
+   #+begin_src perl
+   print STDERR "Updating lasttrans:", $account->{ledgername}, "\n";
+   print STDERR Dumper($transaction);
+   #+end_src
+   Remove all three (the ~use~, both prints).
+
+2. Commented-out counterparty payee override block (lines 84–86) has been dead
+   since the module was written.  Remove it.
+
+3. The ~pendid~ assignment has a commented-out guard:
+   #+begin_src perl
+   $tran{pendid} = $transaction->{pending_transaction_id} || $transaction->{id};
+                   #if $transaction->{pending_transaction_id};
+   #+end_src
+   Without the guard, ~pendid~ is set on every transaction, not just pending ones
+   with a ~pending_transaction_id~ field.  The original intent (guard present)
+   was to set ~pendid~ only when the field exists.  Restore the guard or document
+   why always-set is correct.
+
+** TODO Speculative sign heuristic for Teller liability accounts        :bug:
+:PROPERTIES:
+:ID: BUG-021
+:END:
+
+~addtransactions~ in ~Ledger/JSON/Teller.pm~ determines whether to negate all
+amounts for a liability account (~islia=1~) by sniffing the type and sign of the
+first transaction:
+
+#+begin_src perl
+if ($account->{islia}) {
+    if ($transactions->[0]->{type} ne 'payment') {
+        $neg = ($transactions->[0]->{amount} > 0)
+    } else {
+        $neg = ($transactions->[0]->{amount} < 0)
+    }
+}
+#+end_src
+
+This heuristic was written without real Teller credit card data and has never
+been tested.  If Teller uses a consistent sign convention (debits negative,
+credits positive for all account types — consistent with their documentation),
+then ~$neg~ would evaluate to 0 for a typical credit card account (first
+non-payment purchase is negative → ~amount > 0~ is false), meaning no negation
+occurs.  But a payment-first export or an edge case with zero-amount rows would
+produce the wrong sign on all transactions.
+
+The depository path (~islia=0~) is correct and tested.  The liability path
+should be verified against a real Teller credit card export before relying on
+it.  Until then, treat any Teller credit card import result as potentially
+mis-signed.
 
 ** FIXED Date comment written even when no transactions are appended  :bug:
 :PROPERTIES:
@@ -1595,6 +1668,16 @@ are easy to break silently.
 
 - Fixture: a representative Teller JSON export (scrubbed).
 - Cases to cover: basic transaction parse and account routing.
+
+*Coverage gap*: the fixture (~fr013_teller.json~) contains a single depository
+account with one cleared transaction.  The following are untested and their
+behaviour is unverified against real Teller data:
+- Credit card / loan accounts (~type: credit~ / ~loan~, ~islia=1~): the ~$neg~
+  sign-detection heuristic in ~addtransactions~ has never run on real data.
+- Pending transactions (~status: pending~).
+- ~running_balance~ field absent from a transaction (fallback to account-level
+  balance).
+- Multiple accounts in a single JSON export.
 
 *** Approach
 

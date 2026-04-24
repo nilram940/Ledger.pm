@@ -1,0 +1,7 @@
+; BUG-010: makeid() date+amount collision and account-name coupling.
+;
+; Empty starting ledger — no prior transactions.
+
+2026/01/01 * Opening Balance
+    Assets:Checking                  $1000.00
+    Equity:Opening Balances

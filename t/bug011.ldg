@@ -2,7 +2,7 @@
 ; incoming transactions are already in the ledger (@append is empty).
 ;
 ; The Coffee Shop posting has the ID in the format the library writes
-; (account-initial prefix + FITID), so ledgerCSV populates self->{id}
+; (CSV source prefix + FITID), so ledgerCSV populates self->{id}
 ; correctly and the second import deduplicates it.
 
 2026/01/01 * Opening Balance
@@ -10,5 +10,5 @@
     Equity:Opening Balances
 
 2026/01/15 * Coffee Shop
-    Assets:Checking                    -$5.00  ; ID: C-CHK-001
+    Assets:Checking                    -$5.00  ; ID: CSV-CHK-001
     Expenses:Dining
