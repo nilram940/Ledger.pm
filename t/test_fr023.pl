@@ -73,7 +73,7 @@ my $no_ln_acct = $no_ln_rows[0] ? $no_ln_rows[0]{account} : undef;
 # account_map() functional: Fidelity parse uses map set via setter
 my @fid_rows;
 $fid->parse(sub { push @fid_rows, shift });
-my ($fid_buy) = grep { ($_->{payee}//'') =~ /FIDELITY 500/ && ($_->{quantity}//0) > 0 } @fid_rows;
+my ($fid_buy) = grep { ($_->{payee}//'') =~ /You Bought/ && ($_->{quantity}//0) > 0 } @fid_rows;
 my $fid_buy_acct = $fid_buy ? $fid_buy->{account} : undef;
 
 check_methods($hsa_class_type, $fid_class_type, $cb_class_type, $hsa_inst_type,

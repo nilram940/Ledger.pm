@@ -48,26 +48,27 @@ sub config {
             date           => 'Run Date',
             account_number => 'Account Number',
             account_name   => 'Account',
-            action         => 'Action',
+            description    => 'Description',
             symbol         => 'Symbol',
-            payee          => 'Description',
+            payee          => 'Action',
             contrib_type   => 'Type',
             price_col      => 'Price ($)',
             shares         => 'Quantity',
             quantity       => 'Amount ($)',
         },
+        csv_args => {},
         process => sub {
             my $csv = shift;
             my $base = $account_map->{$csv->{account_name}}
                        // $csv->{account_name};
-            my $action = $csv->{action} // '';
+            my $action = $csv->{payee} // '';
             if ($action =~ $buy_re || $action =~ $sell_re) {
                 my $amt = $csv->{quantity} + 0;
                 $amt = $csv->{price_col} * abs($csv->{shares})
                     if !$amt && $csv->{price_col};
                 $csv->{cost}      = abs($amt);
                 $csv->{quantity}  = $csv->{shares} + 0;
-                $csv->{quantity}  = -$csv->{quantity} if $action =~ $sell_re;
+                # $csv->{quantity}  = -$csv->{quantity} if $action =~ $sell_re;
                 $csv->{commodity} = $csv->{symbol};
                 $base .= ":$csv->{symbol}" if ($csv->{symbol}//'') =~ /\S/;
             }

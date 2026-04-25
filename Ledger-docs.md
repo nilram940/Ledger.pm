@@ -370,9 +370,13 @@ Parses a CSV statement file, calling `$callback->(\%transaction)` for each row.
 | Key | Description |
 |-----|-------------|
 | `fields` | Ordered array of field names mapping CSV columns to hash keys |
+| `header_map` | Hashref `{ field_name => 'Column Header' }`: reads the first non-blank/non-comment line as column headers and builds `fields` from it; mutually exclusive with `fields` |
 | `csv_args` | Hashref passed to `Text::CSV->new` |
 | `reverse` | If true, negates the quantity (ignored for balance assertions) |
+| `running_balance` | Field name whose value is treated as a running balance assertion (stored as `cost='BAL'` row) |
 | `process` | Optional coderef called on each row hashref before the main callback |
+
+**Preamble and directives**: before reading data rows, `parsefile` skips any leading blank rows and rows whose first field starts with `#`. A `#LedgerName: <name>` row, if present, sets the `ledgername` key on each emitted row. With `header_map`, the first non-blank/non-`#` row is consumed as the column-header row. Without `header_map`, the file position is reset to the start of that row so it is read as a data row.
 
 **Recognised field names** (others are passed through unchanged):
 

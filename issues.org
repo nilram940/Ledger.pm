@@ -1226,8 +1226,13 @@ Trailing disclaimer text (after data rows) is already handled by the existing
 
 *** Fix
 
-- ~Ledger/CSV.pm~: header-scan loop replaces single ~getline~ call in the
-  ~header_map~ branch.
+- ~Ledger/CSV.pm~: unified ~while(1)~ loop using ~getline~ consumes blank rows
+  and ~#~-comment rows (extracting ~#LedgerName:~ if present) before reading
+  the header.  With ~header_map~, the loop terminates at the first non-blank,
+  non-comment row and uses it directly as the column-header row.  Without
+  ~header_map~, the file position is reset to that row so it is read as a data
+  row.  Replaces the earlier split logic (raw ~<$fd>~ peek + separate ~do {}
+  while~ scan in the ~header_map~ branch).
 - ~Ledger/CSV/Fidelity.pm~: ~lc($csv->{contrib_type}) ne 'cash'~ guard on the
   ~contrib_type~ append.
 - New fixture ~t/bug025_fidelity.csv~: blank preamble + ~Cash~ Type column +
@@ -2038,17 +2043,19 @@ Uses ~header_map~ (FR-016) for column-name-driven field mapping and a ~process~
 callback closure for all Fidelity-specific logic.  No changes to ~CSV.pm~ or
 ~Posting.pm~.
 
-Key column mappings: ~Run Date~ → ~date~, ~Account Number~ → ~account_number~,
-~Action~ → ~action~, ~Symbol~ → ~symbol~, ~Description~ → ~payee~, ~Type~ →
-~contrib_type~, ~Price ($)~ → ~price_col~, ~Quantity~ → ~shares~, ~Amount ($)~
-→ ~quantity~.
+Key column mappings: ~Run Date~ → ~date~, ~Account~ → ~account_name~,
+~Account Number~ → ~account_number~, ~Action~ → ~payee~, ~Symbol~ → ~symbol~,
+~Description~ → ~description~, ~Type~ → ~contrib_type~, ~Price ($)~ →
+~price_col~, ~Quantity~ → ~shares~, ~Amount ($)~ → ~quantity~.
 
 The ~process~ callback:
-- Resolves ~account_number~ via a user-supplied ~%account_map~ closure
-- For buy/sell actions: sets ~cost = abs(Amount)~ (falls back to ~Price × Quantity~
-  if Amount is blank), ~quantity = shares~, ~commodity = Symbol~, appends
-  ~:Symbol~ to account
-- Appends ~:Type~ to account when ~contrib_type~ is set (401k ~PRETAX~/~MATCH~/etc.)
+- Resolves ~account_name~ via a user-supplied ~%account_map~ closure (falls
+  back to the raw account name)
+- For buy/sell actions (matched against ~payee~): sets ~cost = abs(Amount)~
+  (falls back to ~Price × Quantity~ if Amount is blank), ~quantity = shares~,
+  ~commodity = Symbol~, appends ~:Symbol~ to account
+- Appends ~:Type~ to account when ~contrib_type~ is set and not ~cash~ (401k
+  ~PRETAX~/~MATCH~/etc.)
 - Cash actions (dividend, interest): passes ~quantity~ (Amount) through unchanged
 
 Output format: ~2 FXAIX @@ $250.00~ — total cost via existing ~cost~ field in
@@ -2358,32 +2365,34 @@ sub config {
     return {
         header_map => {
             date           => 'Run Date',
+            account_name   => 'Account',
             account_number => 'Account Number',
-            action         => 'Action',
+            payee          => 'Action',
             symbol         => 'Symbol',
-            payee          => 'Description',
+            description    => 'Description',
             contrib_type   => 'Type',
             price_col      => 'Price ($)',
             shares         => 'Quantity',
             quantity       => 'Amount ($)',
         },
+        csv_args => {},
         process => sub {
             my $csv = shift;
-            my $base = $account_map->{$csv->{account_number}}
-                       // $csv->{account_number};
-            my $action = $csv->{action} // '';
+            my $base = $account_map->{$csv->{account_name}}
+                       // $csv->{account_name};
+            my $action = $csv->{payee} // '';
             if ($action =~ $buy_re || $action =~ $sell_re) {
                 my $amt = $csv->{quantity} + 0;
                 $amt = $csv->{price_col} * abs($csv->{shares})
                     if !$amt && $csv->{price_col};
                 $csv->{cost}      = abs($amt);
                 $csv->{quantity}  = $csv->{shares} + 0;
-                $csv->{quantity}  = -$csv->{quantity} if $action =~ $sell_re;
                 $csv->{commodity} = $csv->{symbol};
                 $base .= ":$csv->{symbol}" if ($csv->{symbol}//'') =~ /\S/;
             }
             $base .= ":$csv->{contrib_type}"
-                if ($csv->{contrib_type}//'') =~ /\S/;
+                if ($csv->{contrib_type}//'') =~ /\S/
+                && lc($csv->{contrib_type}) ne 'cash';
             $csv->{account} = $base;
             $csv->{state}   = 'cleared';
         },

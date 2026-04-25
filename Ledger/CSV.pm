@@ -33,7 +33,8 @@ sub parsefile{
     my ($file,$args,$callback)=@_;
     my $fields=$args->{fields};
     my $csvargs=$args->{csv_args}||{};
-    my $tcsv=Text::CSV->new($csvargs);
+    my $tcsv=Text::CSV->new($csvargs) || die "Cannot use CSV: " . Text::CSV->error_diag();
+
     my $fd;
 
     if (ref $file){
@@ -43,25 +44,33 @@ sub parsefile{
     }
 
     my $ledgername;
-    if (!ref $file) {
-        my $pos = tell($fd);
-        local $/ = "\n";
-        my $first = <$fd>;
-        if (defined $first && $first =~ /^#LedgerName:\s*(.+?)\s*$/) {
-            $ledgername = $1;
-        } else {
-            seek($fd, $pos, 0);
+    my $header;
+    my $pos;
+
+    while(1) {
+        #consume blank / comment lines in header
+        $pos = tell($fd);
+        $header = $tcsv->getline($fd);
+        if ($header){
+            my $h0=$header->[0];
+            if ($h0=~/^#/){
+                if ($h0=~ /^#LedgerName:\s*(.+?)\s*$/) {
+                    $ledgername = $1;
+                }
+            }elsif ($h0=~/\w/) {
+                last
+            }
+
         }
     }
-
     if ($args->{header_map}) {
         my %col_to_field = reverse %{$args->{header_map}};
-        my $header;
-        do {
-            $header = $tcsv->getline($fd);
-        } while (defined $header && !grep { exists $col_to_field{$_} } @$header);
-        $fields = [ map { $col_to_field{$_} // '' } @$header ] if $header;
+        $fields = [ map { $col_to_field{$_} // '' } @{$header} ];
+    }else{
+        #reset to read the actual first line.
+        seek($fd, $pos, 0);
     }
+
 
     my $rb_field = $args->{running_balance};
     my ($rb_val, $rb_date);

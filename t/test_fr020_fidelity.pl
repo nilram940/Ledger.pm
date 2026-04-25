@@ -52,9 +52,8 @@ sub check {
 
     my @txns = grep { $_->{date} } $ledger->getTransactions();
 
-    my ($buy)  = grep { $_->{payee} =~ /FIDELITY 500/i
-                        && $_->getPosting(0)->{quantity} > 0 } @txns;
-    my ($div)  = grep { $_->{payee} =~ /FIDELITY 500/i
+    my ($buy)  = grep { $_->{payee} =~ /You Bought/i } @txns;
+    my ($div)  = grep { $_->{payee} =~ /Dividend/i
                         && ($_->getPosting(0)->{commodity}//'') eq '$' } @txns;
     my ($cont) = grep { $_->getPosting(0)->{account} =~ /Fidelity401k/ } @txns;
 
