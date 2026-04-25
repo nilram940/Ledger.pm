@@ -811,11 +811,14 @@ sub update_file{
     # Write to a temp file first so a crash never destroys the original.
     # The .bak is kept as a safety copy regardless of outcome.
     my $tmpfile = "$file.tmp$$";
-    rename($file, "$file.bak") || die "Cannot backup $file: $!";
+    my $file_existed = -f $file;
+    if ($file_existed) {
+        rename($file, "$file.bak") || die "Cannot backup $file: $!";
+    }
 
     eval {
         open(my $writeh, '>', $tmpfile) || die "Cannot write $tmpfile: $!";
-        open(my $readh,  '<', "$file.bak") || die "Cannot read $file.bak: $!";
+        open(my $readh,  '<', $file_existed ? "$file.bak" : '/dev/null') || die "Cannot read original: $!";
 
         foreach my $pos (sort {$a <=> $b} (keys %posmap)){
             my $transaction=$posmap{$pos};
@@ -899,7 +902,7 @@ sub update_file{
         my $err = $@;
         unlink $tmpfile if -f $tmpfile;
         # Restore original if the destination is absent or zero-length
-        rename("$file.bak", $file) unless -s $file;
+        rename("$file.bak", $file) if $file_existed && !-s $file;
         die $err;
     }
 

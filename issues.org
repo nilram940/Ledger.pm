@@ -1289,6 +1289,29 @@ ascending-order CSVs with same-day transactions.  Deferred.
 Added ~&& $csv{date} > ($rb_date // 0)~ to the ~running_balance~ update
 condition in ~parsefile~.
 
+** DONE ~update_file~ dies when ledger file does not yet exist          :bug:
+:PROPERTIES:
+:ID: BUG-026
+:END:
+:LOGBOOK:
+- State "DONE" from "TODO" [2026-04-25]
+:END:
+
+~update_file~ unconditionally called ~rename($file, "$file.bak")~ before
+writing.  When the ledger file does not exist (first-time import), ~rename~
+fails with "No such file or directory" and the write is aborted.
+
+*** Fix
+
+Guard the backup rename on ~-f $file~.  When the file is absent, open
+~/dev/null~ as the read handle instead of ~"$file.bak"~ (so the copy-through
+loop has a valid handle but produces no output, yielding a fresh file).  The
+error-recovery ~rename("$file.bak", $file)~ is similarly guarded so it is
+only attempted when a backup was actually created.
+
+- ~Ledger.pm~ (~update_file~): ~$file_existed = -f $file~ flag controls
+  backup rename and restore.
+
 * Feature Requests
 
 ** DONE Add edit-scheduling methods to Transaction                 :feature:
