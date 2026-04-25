@@ -72,7 +72,8 @@ sub config {
                 $base .= ":$csv->{symbol}" if ($csv->{symbol}//'') =~ /\S/;
             }
             $base .= ":$csv->{contrib_type}"
-                if ($csv->{contrib_type}//'') =~ /\S/;
+                if ($csv->{contrib_type}//'') =~ /\S/
+                && lc($csv->{contrib_type}) ne 'cash';
             $csv->{account} = $base;
             $csv->{state}   = 'cleared';
         },

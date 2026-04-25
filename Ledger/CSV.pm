@@ -55,9 +55,12 @@ sub parsefile{
     }
 
     if ($args->{header_map}) {
-        my $header = $tcsv->getline($fd);
         my %col_to_field = reverse %{$args->{header_map}};
-        $fields = [ map { $col_to_field{$_} // '' } @$header ];
+        my $header;
+        do {
+            $header = $tcsv->getline($fd);
+        } while (defined $header && !grep { exists $col_to_field{$_} } @$header);
+        $fields = [ map { $col_to_field{$_} // '' } @$header ] if $header;
     }
 
     my $rb_field = $args->{running_balance};

@@ -1201,6 +1201,40 @@ correctness; all add noise.
 - Trailing ~#if $transaction->{pending_transaction_id};~ comment
 - ~print STDERR "Updating lasttrans:..."~ and ~print STDERR Dumper(...)~ debug prints
 
+** DONE ~Ledger::CSV::Fidelity~ fails to parse real Fidelity exports        :bug:
+:PROPERTIES:
+:ID: BUG-025
+:END:
+
+Confirmed causes (from ~anon.csv~ real export):
+
+1. *Blank preamble lines* before the column header — real exports have 2 blank
+   lines before ~Run Date,Account,...~.  Fixed in ~Ledger::CSV::parsefile~: the
+   ~header_map~ branch now scans forward until it finds a line where at least
+   one column name matches ~%col_to_field~, skipping any preamble.
+
+2. *~Type~ column always "Cash"* in non-retirement rows — real exports put ~Cash~
+   (the Fidelity subaccount designator) in the ~Type~ column for all standard
+   transactions, which caused ~:Cash~ to be appended to every account name.
+   Fixed in ~Fidelity::config~: ~contrib_type~ is only appended when its value
+   is not ~cash~ (case-insensitive).
+
+Column names are identical to the fixture; no BOM observed.
+
+Trailing disclaimer text (after data rows) is already handled by the existing
+~next unless $csv{date}~ guard in ~parsefile~.
+
+*** Fix
+
+- ~Ledger/CSV.pm~: header-scan loop replaces single ~getline~ call in the
+  ~header_map~ branch.
+- ~Ledger/CSV/Fidelity.pm~: ~lc($csv->{contrib_type}) ne 'cash'~ guard on the
+  ~contrib_type~ append.
+- New fixture ~t/bug025_fidelity.csv~: blank preamble + ~Cash~ Type column +
+  trailing disclaimer.
+- New test ~t/test_bug025.pl~: verifies all 3 rows parsed, correct accounts,
+  no ~:Cash~ suffix, ~:PRETAX~ still appended, count=3 (postamble not parsed).
+
 ** DONE ~running_balance~ balance assertion uses first row instead of latest :bug:
 :PROPERTIES:
 :ID: BUG-024
