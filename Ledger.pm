@@ -846,8 +846,27 @@ sub update_file{
                 # balance entries here instead of at EOF.
                 if ($is_cleared_file && $pos == $self->{cleared_pos}) {
                     my @to_write = sort { $a->{date} <=> $b->{date} } @{$append_for{cleared}};
+                    my $lastpost={};
+                    foreach my $trans (@to_write){
+                        foreach my $post ($tran->getPostings){
+                            my $acct=$post->{account};
+                            if (my $bal=$self->{balance}->{$acct}){
+                                my $com=$post->{commodity} || '$';
+                                $lastpost->{$acct}||={}
+                                $lastpost->{$acct}->{$com}=[$post, $bal->{$com}];
+                            }
+                        }
+                    }
+                    foreach my $acct (values %{$lastpost}){
+                        foreach my $com  (values %{$post}){
+                            my ($post,$val)=@{$com}
+                            $post>{add_assert}=1;
+                            $post->{assert}=$val;
+                        }
+                    }
                     my @bal = $balance_written ? () : @balance_entries;
                     if (@to_write || @bal) {
+                        # There should never be a case where @bal is populated but @to_write is not.
                         print $writeh "\n; ".localtime."\n\n" if @to_write;
                         print $writeh join("\n", map { $_->toString } (@to_write, @bal))."\n\n";
                         $append_for{cleared} = [] if @to_write;

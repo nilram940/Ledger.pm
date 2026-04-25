@@ -12,7 +12,8 @@ sub new{
     # 	       amount    => "",
     # 	       commodity => "",
     # 	       price     => "",
-    # 	       note      => ""
+    # 	       note      => "",
+    #          assert    => ""
     # }
     
     bless $self, $class;
@@ -34,7 +35,7 @@ sub getid{
     }
 }
 sub toString{
-    my ($self, $opts) = @_;
+    my $self = shift;
     my $bal=($self->{cost} && $self->{cost} eq 'BAL');
     my $assert=($self->{cost} && $self->{cost} eq 'ASSERT');
     my $str=$bal?sprintf('     %-40s   = ','['.$self->{account}.']'):
@@ -42,7 +43,7 @@ sub toString{
     if (length($self->{quantity})){
 	if ($self->{commodity} eq '$'){
 	    $str.=($assert ? '= ' : '').sprintf('$%0.2f',$self->{quantity});
-            $str.=sprintf(' = $%0.2f',$self->{assert}) if defined $self->{assert} && $opts && $opts->{assert};
+            $str.=sprintf(' = $%0.2f',$self->{assert}) if defined $self->{assert} && $self->{add_assert};
 	}else{
 	    my $commodity=$self->{commodity};
 	    $commodity = '"'.$commodity.'"' if $commodity =~/[^A-Z]/i;
