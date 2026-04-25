@@ -1,0 +1,26 @@
+{
+  "accounts": [
+    {
+      "account_id": "checking_001",
+      "name": "My Checking Account",
+      "ledger_name": "Checking",
+      "type": "depository",
+      "subtype": "checking",
+      "balances": {
+        "current": 980.00
+      }
+    }
+  ],
+  "transactions": [
+    {
+      "account_id": "checking_001",
+      "amount": 20.00,
+      "merchant_name": "Grocery Store",
+      "transaction_id": "plaid_c001",
+      "pending": false,
+      "date": "2026-02-11"
+    }
+  ],
+  "securities": [],
+  "investment_transactions": []
+}

@@ -1,0 +1,18 @@
+; BUG-013 / BUG-005 fixture: orphaned pending transactions after Plaid snapshot update.
+;
+; Two pending transactions with Plaid-style IDs.  Neither will appear in the
+; next Plaid snapshot, simulating:
+;   Pending 1 ("Pre-Auth Hold"): clears as "Grocery Store" — match found
+;   Pending 2 ("Hotel Hold"):    disappears without posting — no match found
+
+2026/01/15 * Opening Balance
+    Assets:Current Assets:Checking            $1000.00
+    Equity:Opening Balances
+
+2026/02/10 ! Pre-Auth Hold
+    Assets:Current Assets:Checking             -$20.00  ; ID: C!-plaid_p001
+    Expenses:Shopping
+
+2026/02/08 ! Hotel Hold
+    Assets:Current Assets:Checking            -$150.00  ; ID: C!-plaid_p002
+    Expenses:Travel

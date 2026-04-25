@@ -53,6 +53,7 @@ prints a one-line-per-test summary; on failure it re-prints the full output of f
 | `test_fr020_coinbase.pl` | FR-020: `Ledger::CSV::Coinbase->config()` — Buy/Sell (commodity+cost), Rewards Income (commodity, no cost) |
 | `test_fr023.pl` | FR-023: OO parser interface — raw parse via `Ledger::OFX->new->parse` and `Ledger::CSV::HSA->new->parse`; full import via `$ledger->importCallback`; `type()`, `account()`, `account_map()` instance methods on all CSV submodules |
 | `test_bug025.pl` | BUG-025: real Fidelity exports — blank preamble lines skipped before header; `Type=Cash` not appended to account name; trailing disclaimer not parsed; 3 rows imported correctly |
+| `test_bug013.pl` | BUG-013/BUG-005: Plaid absence scan — orphaned pending with cleared match deleted + note added (scenario A); orphaned pending with no match warned and left in place (scenario B) |
 
 ### Fixture files
 
@@ -85,6 +86,7 @@ Each test works on a copy of its fixtures in a temporary directory so originals 
 | `fr016_hsa.csv`, `fr013_base.ldg` | `test_fr019.pl` (reused from FR-016/FR-013) |
 | `fr013.ofx`, `fr016_hsa.csv`, `fr015_fidelity.csv`, `fr013_base.ldg` | `test_fr023.pl` (reused from FR-013/FR-015/FR-016) |
 | `bug025_fidelity.csv`, `fr013_base.ldg` | `test_bug025.pl` |
+| `bug013.ldg`, `bug013.json` | `test_bug013.pl` |
 
 There is no `Makefile` or CI configuration.
 

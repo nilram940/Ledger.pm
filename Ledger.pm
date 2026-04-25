@@ -238,6 +238,7 @@ sub fromStmt{
         }
         my $account = $stmt->can('account') ? $stmt->account() : undef;
         $stmt->parse($self->importCallback($account, $handlers));
+        $self->_pendingAbsenceScan() if $module_opts->{pending_snapshot};
         return $self;
     }
 
@@ -264,11 +265,58 @@ sub fromStmt{
 	Ledger::CSV->new($stmt,$csv->{$account},%$module_opts)->parse($callback);
     }elsif ($stmt=~/.json$/i){
         Ledger::JSON->new($stmt)->parse($callback);
+        $self->_pendingAbsenceScan();
     }
     return $self;
 
 }
 
+
+sub _pendingAbsenceScan {
+    my ($self) = @_;
+    my $seen    = $self->{seen_pending}     || {};
+    my $scanned = $self->{scanned_accounts} || {};
+
+    for my $txn (grep { $_->{state} eq 'pending' && $_->{file} }
+                 $self->getTransactions()) {
+        my $p0      = $txn->getPosting(0) or next;
+        my $account = $p0->{account};
+        next unless $scanned->{$account};
+        my $key = $p0->getid();
+        next unless defined $key;
+        next if $seen->{$account}{$key};
+
+        my $match = $self->_findMatchingImported($txn);
+        if ($match) {
+            my $note = " absorbed orphaned pending: $txn->{payee}";
+            $match->{note} = $match->{note} ? "$match->{note}; $note" : $note;
+            print STDERR "INFO: orphaned pending '$txn->{payee}' matched to "
+                       . "cleared '$match->{payee}' -- deleting pending\n";
+            $txn->scheduleDelete();
+        } else {
+            print STDERR "WARNING: orphaned pending '$txn->{payee}' has no "
+                       . "cleared match -- may be a released hold; leaving in place\n";
+        }
+    }
+    delete @{$self}{qw(seen_pending scanned_accounts imported_cleared)};
+}
+
+sub _findMatchingImported {
+    my ($self, $pending) = @_;
+    my $p0      = $pending->getPosting(0);
+    my $account = $p0->{account};
+    my $qty     = $p0->{quantity};
+    my $date    = $pending->{date};
+    my $window  = 5 * 24 * 3600;
+
+    for my $t (@{ $self->{imported_cleared}{$account} || [] }) {
+        my $tp = $t->getPosting(0) or next;
+        next unless abs($tp->{quantity} - $qty) < 0.01;
+        next unless abs($t->{date} - $date) <= $window;
+        return $t;
+    }
+    return undef;
+}
 
 sub StmtHandler{
     my $self=shift;
@@ -310,7 +358,10 @@ sub addStmtTran{
     my $key=&makeid($account,$stmttrn);
     my $payee=$stmttrn->{payee};
 
-    
+    $self->{seen_pending}{$account}{$key} = 1
+        if $stmttrn->{state} && $stmttrn->{state} eq 'pending';
+    $self->{scanned_accounts}{$account} = 1;
+
     if ($self->{id}->{$key}){
 	if ($payee ne $self->{id}->{$key}) {
 	    $self->{desc}->{$account} //= {};
@@ -364,6 +415,8 @@ sub addStmtTran{
                                       $self->getTransactions('uncleared'));
         $transaction=$self->transfer($transaction,$tag) if $tag;
         $self->addTransaction($transaction);
+        push @{$self->{imported_cleared}{$account}}, $transaction
+            if $transaction->{state} eq 'cleared';
     }
 
     $posting=undef unless ($stmttrn->{commodity} && $stmttrn->{commodity}=~/^\d+/);
@@ -781,7 +834,8 @@ sub update_file{
                           $transaction->{epos}:
                           $transaction->{edit_end});
                 if (($transaction->{edit} eq $file) &&
-                    ($transaction->{edit_pos} == $pos)) {
+                    ($transaction->{edit_pos} == $pos) &&
+                    !$transaction->{deleted}) {
                     print $writeh "\n".$transaction->toString();
                 }
                 # When the cleared sentinel position is claimed by a ref entry

@@ -36,6 +36,16 @@ sub scheduleAppend {
     $self->{edit_pos} = -1;
 }
 
+sub scheduleDelete {
+    my ($self, $file) = @_;
+    $file //= $self->{file};
+    $self->findtext if $file && !$self->{bpos};
+    $self->{edit}     = $file;
+    $self->{edit_pos} = $self->{bpos} || 0;
+    $self->{edit_end} = $self->{epos};
+    $self->{deleted}  = 1;
+}
+
 sub findtext{
     my ($self, $fh)=@_;
     my $close=0;

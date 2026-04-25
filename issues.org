@@ -285,7 +285,7 @@ Asset/Liability and, if so, correctly replaces the matched posting with
 ~Equity:Transfers:~ rather than merging the whole transaction.
 Covered by ~t/test_transfer.pl~ Scenario 2.
 
-*** TODO Pending (Plaid) transactions do not clear                    :bug:
+*** PARTIAL Pending (Plaid) transactions do not clear                 :bug:
 
 The automation matches pending transactions by ID, but Plaid's pending ID
 either changes or disappears when a transaction posts.  Two failure modes:
@@ -955,9 +955,12 @@ $csv{quantity} =~ s/^(-?)[^-\d]*\$/$1/;
 This strips any currency prefix (including currency symbols and spaces)
 while keeping the sign.  Positive amounts are unaffected.
 
-** TODO Removed holds left as orphaned pending transactions            :bug:
+** PARTIAL Removed holds left as orphaned pending transactions         :bug:
 :PROPERTIES:
 :ID: BUG-013
+:END:
+:LOGBOOK:
+- State "PARTIAL" from "TODO" [2026-04-25]
 :END:
 
 Vendors occasionally place holds on cards that appear as pending
@@ -1009,6 +1012,26 @@ provides a date-bounded window and may not include all pending
 transactions; CSV almost certainly does not.  A ~pending_snapshot =>
 1~ option to ~fromStmt~ (or inferred from the ~.json~ extension) would
 gate the scan.
+
+*** Implementation (2026-04-25)
+
+Implemented ~_pendingAbsenceScan~ in ~Ledger.pm~, auto-triggered after
+any ~.json~ import (or explicit ~pending_snapshot => 1~ in module opts).
+
+- Tracks ~{scanned_accounts}~ and ~{seen_pending}~ during ~addStmtTran~
+  (before the dedup check so re-imported still-active pendings are recorded).
+- Tracks ~{imported_cleared}~ (cleared transactions added in this run).
+- After the parse, scans all existing pending transactions for each scanned
+  account; orphans not in ~{seen_pending}~ are checked against ~{imported_cleared}~
+  by date (±5 days) and amount (±$0.01).
+- Match found: ~scheduleDelete~ the pending; annotate the cleared transaction's
+  header note with "absorbed orphaned pending: <payee>"; log to stderr.
+- No match: log a WARNING to stderr; leave the pending in place for manual review.
+
+Added ~scheduleDelete~ to ~Ledger::Transaction~; added ~{deleted}~ gate to the
+~update_file~ write path so the deletion skips the transaction bytes cleanly.
+
+Covered by ~t/test_bug013.pl~ (scenario A = match, scenario B = no match).
 
 ** TODO Debug and dead code in Ledger::JSON::Teller                   :bug:
 :PROPERTIES:
@@ -1432,6 +1455,37 @@ manually entered uncleared transactions where the statement balance needs to
 be updated when the statement arrives.
 
 Automated statement downloading is out of scope.
+
+*** Architecture
+
+~Ledger::PDF~ mirrors ~Ledger::CSV~:
+
+- ~Ledger/PDF.pm~ — base dispatcher; shells out to ~pdftotext~ (poppler-utils)
+  to extract text, then delegates to the matching institution submodule.
+  Factory pattern: detect institution via ~fingerprint()~ on extracted text,
+  or by file-naming convention.
+- ~Ledger/PDF/BankName.pm~ — per-institution text parser.  Implements
+  ~new($file, %opts)~, ~parse($cb)~, optionally ~fingerprint()~.  Callback
+  contract identical to CSV/OFX/JSON parsers (~date~, ~quantity~, ~payee~,
+  ~source~, ~state~; ~cost => 'BAL'~ for balance assertions).
+- ~Ledger.pm~ ~fromStmt()~ — add ~elsif ($stmt =~ /\.pdf$/i)~ branch.
+
+*** Assumption: text-based PDFs
+
+Statements are assumed to contain selectable text (not scanned images).
+~pdftotext~ (poppler-utils) extracts the text via subprocess — the same
+pattern as shelling out to ~ledger csv~.  OCR is out of scope.
+
+*** Gating constraint
+
+No concrete parser can be written without a sample PDF from a specific
+institution.  A framework skeleton (~Ledger::PDF~ + ~fromStmt~ dispatch) with
+no institution behind it is dead code.
+
+Next steps when ready:
+1. Identify target institution and obtain an anonymized sample statement.
+2. Run ~pdftotext -layout statement.pdf -~ and review the text layout.
+3. Design ~Ledger::PDF::BankName~ from the text output.
 
 ** DONE Move Storable caches to YAML                               :feature:
 :PROPERTIES:
