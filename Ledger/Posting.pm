@@ -51,6 +51,8 @@ sub toString{
 	    if ($self->{cost} && ! $bal){
 		$str.=' @@ $'.sprintf('%0.2f',$self->{cost});
 	    }
+	    $str.=' = '.$self->{assert}.' '.$commodity
+                if defined $self->{assert} && $self->{add_assert};
 	}
     }
     $str.='  ; '.$self->{note} if $self->{note};

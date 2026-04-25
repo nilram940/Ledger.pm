@@ -54,6 +54,8 @@ prints a one-line-per-test summary; on failure it re-prints the full output of f
 | `test_fr023.pl` | FR-023: OO parser interface — raw parse via `Ledger::OFX->new->parse` and `Ledger::CSV::HSA->new->parse`; full import via `$ledger->importCallback`; `type()`, `account()`, `account_map()` instance methods on all CSV submodules |
 | `test_bug025.pl` | BUG-025: real Fidelity exports — blank preamble lines skipped before header; `Type=Cash` not appended to account name; trailing disclaimer not parsed; 3 rows imported correctly |
 | `test_bug013.pl` | BUG-013/BUG-005: Plaid absence scan — orphaned pending with cleared match deleted + note added (scenario A); orphaned pending with no match warned and left in place (scenario B) |
+| `test_bal_inline.pl` | Inline balance assertion on cash accounts: last cleared posting gets `= $x.xx` stamped inline; uses bug016 fixtures |
+| `test_bal_inline_inv.pl` | Inline balance assertion on investment accounts: last INVBUY posting gets `= N TICKER` stamped inline; uses bug017 (401k) fixtures |
 
 ### Fixture files
 
@@ -87,6 +89,8 @@ Each test works on a copy of its fixtures in a temporary directory so originals 
 | `fr013.ofx`, `fr016_hsa.csv`, `fr015_fidelity.csv`, `fr013_base.ldg` | `test_fr023.pl` (reused from FR-013/FR-015/FR-016) |
 | `bug025_fidelity.csv`, `fr013_base.ldg` | `test_bug025.pl` |
 | `bug013.ldg`, `bug013.json` | `test_bug013.pl` |
+| `bug016.ldg`, `bug016.csv` | `test_bal_inline.pl` (reused from BUG-016) |
+| `fr013_base.ldg`, `fr013_ofx_401k.ofx` | `test_bal_inline_inv.pl` (reused from BUG-017) |
 
 There is no `Makefile` or CI configuration.
 
@@ -98,7 +102,7 @@ There is no `Makefile` or CI configuration.
 |--------|------|
 | `Ledger.pm` | Core orchestrator: loads existing ledger (via Storable cache or `ledger csv`), manages transaction list, runs import pipeline, writes changes back |
 | `Ledger/Transaction.pm` | Single transaction: date/state/payee/postings, file byte-position tracking (`bpos`/`epos`/`edit_pos`), matching logic |
-| `Ledger/Posting.pm` | Single posting (account + amount + commodity), serialization. `toString($opts)` accepts `{ assert => 1 }` to append `= $x.xx` from the `assert` field; default omits it. `Transaction::toString($opts)` forwards `$opts` to each posting. |
+| `Ledger/Posting.pm` | Single posting (account + amount + commodity), serialization. When `$posting->{add_assert}` is set, `toString` appends an inline balance assertion (`= $x.xx` for dollar postings, `= N TICKER` for commodity postings) using `$posting->{assert}` as the value. |
 | `Ledger/CSV.pm` | Parses CSV bank statement files; `detect($header)` returns matching institution module; `new($file, $args, %opts)` — factory: when `$args` is undef, peeks the header and returns the appropriate sub-object (`$mod->new($file, %opts)`); `parse($cb)` OO interface; loaded lazily by `fromStmt` |
 | `Ledger/CSV/Fidelity.pm` | Fidelity brokerage CSV: `fingerprint()` + `config(account_map =>)` (keyed by account name) + `new`/`parse` OO interface; `type()` returns `'Fidelity'`; `account($val)` / `account_map($val)` instance setters |
 | `Ledger/CSV/HSA.pm` | HSA/benefit CSV: `fingerprint()` + `config()`, `running_balance` for BAL assertion + `new`/`parse` OO interface; `type()` returns `'HSA'`; `account($val)` instance setter |
@@ -118,6 +122,12 @@ Each parsed transaction is routed through `addStmtTran`, which:
 2. Looks up a handler (code ref or hashref with `payee`/`transfer` keys) by account+payee, falling back to the payee description cache (`YAML::Tiny`-persisted)
 3. Matches against existing uncleared transactions using `Transaction::balance()` — a scoring function based on date proximity, amount difference, payee similarity, check number, and pending ID
 4. Only accepts transactions within 90 days and after 2024-03-08
+
+### Inline Balance Assertions
+
+When writing new cleared transactions, `update_file` calls `annotate_balance_assertions` to stamp the last posting for each account/commodity with `add_assert` and `assert` fields. `Posting::toString` then appends `= $x.xx` (dollar) or `= N TICKER` (commodity) inline on that posting, giving a ledger-verifiable balance assertion without a separate transaction.
+
+`$self->{balance}` is keyed by account+commodity. For OFX investment imports, `OFX::stop()` resolves CUSIP codes to tickers by updating posting objects in-place, but does not re-key the balance hash. `_rekey_balance()` is called after each OFX parse to rebuild the hash from the (now-correct) posting fields, keeping the keys valid before `update()` runs.
 
 ### Transfer Matching
 

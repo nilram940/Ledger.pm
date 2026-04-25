@@ -260,6 +260,7 @@ sub fromStmt{
 
     if ($stmt=~/.[oq]fx$/i){
 	Ledger::OFX->new($stmt)->parse($callback);
+        $self->_rekey_balance();
     }elsif ($stmt=~/.csv$/i){
         require Ledger::CSV;
 	Ledger::CSV->new($stmt,$csv->{$account},%$module_opts)->parse($callback);
@@ -271,6 +272,16 @@ sub fromStmt{
 
 }
 
+
+sub _rekey_balance {
+    my $self = shift;
+    my %rekeyed;
+    for my $tran (map { values %$_ } values %{$self->{balance}}) {
+        my $post = $tran->{postings}[0];
+        $rekeyed{$post->{account}}{$post->{commodity} || '$'} = $tran;
+    }
+    $self->{balance} = \%rekeyed;
+}
 
 sub _pendingAbsenceScan {
     my ($self) = @_;
@@ -758,6 +769,23 @@ sub update_file{
     }
     my $is_cleared_file = ($self->{cleared_file} && $self->{cleared_file} eq $file);
 
+    my $annotate_balance_assertions = sub {
+        my %last;
+        for my $trans (@_) {
+            for my $post ($trans->getPostings) {
+                my $acct = $post->{account};
+                my $com  = $post->{commodity} || '$';
+                next unless exists $self->{balance}{$acct}{$com};
+                if (my $prev = $last{$acct}{$com}) {
+                    delete @{$prev}{qw(add_assert assert)};
+                }
+                $post->{add_assert} = 1;
+                $post->{assert}     = $self->{balance}{$acct}{$com}{postings}[0]{quantity};
+                $last{$acct}{$com}  = $post;
+            }
+        }
+    };
+
     my @edit= (grep {$_->{edit} &&
 			 (($_->{file} &&
 			   $_->{file} eq $file) ||
@@ -846,24 +874,7 @@ sub update_file{
                 # balance entries here instead of at EOF.
                 if ($is_cleared_file && $pos == $self->{cleared_pos}) {
                     my @to_write = sort { $a->{date} <=> $b->{date} } @{$append_for{cleared}};
-                    my $lastpost={};
-                    foreach my $trans (@to_write){
-                        foreach my $post ($tran->getPostings){
-                            my $acct=$post->{account};
-                            if (my $bal=$self->{balance}->{$acct}){
-                                my $com=$post->{commodity} || '$';
-                                $lastpost->{$acct}||={}
-                                $lastpost->{$acct}->{$com}=[$post, $bal->{$com}];
-                            }
-                        }
-                    }
-                    foreach my $acct (values %{$lastpost}){
-                        foreach my $com  (values %{$post}){
-                            my ($post,$val)=@{$com}
-                            $post>{add_assert}=1;
-                            $post->{assert}=$val;
-                        }
-                    }
+                    $annotate_balance_assertions->(@to_write);
                     my @bal = $balance_written ? () : @balance_entries;
                     if (@to_write || @bal) {
                         # There should never be a case where @bal is populated but @to_write is not.
@@ -879,6 +890,7 @@ sub update_file{
                     my @to_write = sort { $a->{date} <=> $b->{date} } @{$append_for{$state}};
                     my @bal = ($state eq 'cleared') ? @balance_entries : ();
                     next unless @to_write || @bal;
+                    $annotate_balance_assertions->(@to_write) if $state eq 'cleared';
                     print $writeh "\n; ".localtime."\n\n" if @to_write;
                     print $writeh join("\n",
                         (map { $_->toString } (@to_write, @bal))
