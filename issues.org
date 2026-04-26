@@ -1312,6 +1312,38 @@ only attempted when a backup was actually created.
 - ~Ledger.pm~ (~update_file~): ~$file_existed = -f $file~ flag controls
   backup rename and restore.
 
+** DONE Fidelity money market reinvestments (FDRXX, SPAXX) should be skipped :bug:
+:PROPERTIES:
+:ID: BUG-027
+:END:
+:LOGBOOK:
+- State "DONE" from "TODO" [2026-04-26]
+:END:
+
+Fidelity exports a ~Dividend Received~ row followed immediately by a
+~Reinvestment~ row for money market funds like FDRXX and SPAXX.  Both rows
+carry the same dollar amount with opposite signs, so importing both produces
+a credit with no offsetting debit — a phantom income entry and a spurious
+commodity holding.  The reinvestment row should be dropped; the dividend row
+alone represents the net effect on the cash account.
+
+*** Fix
+
+- ~Ledger/CSV.pm~ (~parsefile~): added ~next if $csv{skip}~ after the
+  ~process~ callback.  Any format module's ~process~ sub can now set
+  ~$csv->{skip} = 1~ to drop a row before the callback fires.
+- ~Ledger/CSV/Fidelity.pm~ (~config~): added ~cash_funds~ option (default
+  ~[FDRXX, SPAXX]~).  When ~Action~ is exactly ~Reinvestment~ (case-insensitive)
+  and ~Symbol~ is in the cash-funds set, the row is skipped via ~$csv->{skip}~.
+  Dividend rows for those same symbols pass through unchanged and are recorded
+  as cash income to the base account (no ~:SYMBOL~ suffix).
+- ~new~ and ~parse~ updated to thread ~cash_funds~ through the OO path,
+  mirroring the existing ~account_map~ plumbing.
+- New fixture ~t/bug027_cashfund.csv~: FDRXX dividend+reinvestment, SPAXX
+  dividend+reinvestment, and a plain FXAIX buy.
+- New test ~t/test_bug027.pl~: verifies both reinvestment rows are skipped,
+  both dividends imported to the base account, and the FXAIX buy is unaffected.
+
 * Feature Requests
 
 ** DONE Add edit-scheduling methods to Transaction                 :feature:

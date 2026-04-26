@@ -12,6 +12,7 @@ sub new {
         file        => $file,
         account_map => $opts{account_map} // {},
         account     => $opts{account},
+        cash_funds  => $opts{cash_funds},
     }, $class;
 }
 
@@ -30,7 +31,10 @@ sub account_map {
 sub parse {
     my ($self, $callback) = @_;
     require Ledger::CSV;
-    my $config  = $self->config(account_map => $self->{account_map});
+    my $config  = $self->config(
+        account_map => $self->{account_map},
+        cash_funds  => $self->{cash_funds},
+    );
     my $account = $self->{account};
     my $cb = $account
         ? sub { my $csv = shift; $csv->{account} ||= $account; $callback->($csv) }
@@ -41,6 +45,8 @@ sub parse {
 sub config {
     my ($class, %opts) = @_;
     my $account_map = $opts{account_map} // {};
+    my $cash_funds  = $opts{cash_funds}  // [qw(FDRXX SPAXX)];
+    my %is_cash_fund = map { $_ => 1 } @$cash_funds;
     my $buy_re  = qr/bought|buy|contribution|reinvestment/i;
     my $sell_re = qr/sold|sell|redemption/i;
     return {
@@ -62,6 +68,10 @@ sub config {
             my $base = $account_map->{$csv->{account_name}}
                        // $csv->{account_name};
             my $action = $csv->{payee} // '';
+            if ($action =~ /^reinvestment$/i && $is_cash_fund{$csv->{symbol}//''}){
+                $csv->{skip} = 1;
+                return;
+            }
             if ($action =~ $buy_re || $action =~ $sell_re) {
                 my $amt = $csv->{quantity} + 0;
                 $amt = $csv->{price_col} * abs($csv->{shares})

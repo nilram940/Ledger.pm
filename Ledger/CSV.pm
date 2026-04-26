@@ -93,6 +93,7 @@ sub parsefile{
         $csv{source} = 'CSV';
         $csv{idlist} = [$csv{date}, $csv{payee}, $csv{quantity}] unless $csv{id};
         &{$args->{process}}(\%csv) if $args->{process};
+        next if $csv{skip};
         if ($rb_field && defined $csv{$rb_field} && length $csv{$rb_field}
             && ($csv{state}//'cleared') ne 'pending'
             && $csv{date} > ($rb_date // 0)) {

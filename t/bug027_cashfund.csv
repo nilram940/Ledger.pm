@@ -1,0 +1,6 @@
+Run Date,Account,Account Number,Action,Symbol,Description,Type,Price ($),Quantity,Commission ($),Fees ($),Accrued Interest ($),Amount ($),Settlement Date
+03/31/2026,Individual - TOD (...1234),Z12345678,Dividend Received,FDRXX,FIDELITY GOVERNMENT CASH RESERVES,Cash,,,,,,1.23,03/31/2026
+03/31/2026,Individual - TOD (...1234),Z12345678,Reinvestment,FDRXX,FIDELITY GOVERNMENT CASH RESERVES,Cash,1.00,1.230,,,,-1.23,03/31/2026
+03/31/2026,Individual - TOD (...1234),Z12345678,Dividend Received,SPAXX,FIDELITY GOVT MONEY MARKET,Cash,,,,,,0.50,03/31/2026
+03/31/2026,Individual - TOD (...1234),Z12345678,Reinvestment,SPAXX,FIDELITY GOVT MONEY MARKET,Cash,1.00,0.500,,,,-0.50,03/31/2026
+03/12/2026,Individual - TOD (...1234),Z12345678,You Bought,FXAIX,FIDELITY 500 INDEX FUND,,125.00,2.000,,,,-250.00,03/14/2026

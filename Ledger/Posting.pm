@@ -49,7 +49,7 @@ sub toString{
 	    $commodity = '"'.$commodity.'"' if $commodity =~/[^A-Z]/i;
 	    $str.=$self->{quantity}.' '.$commodity;
 	    if ($self->{cost} && ! $bal){
-		$str.=' @@ $'.sprintf('%0.2f',$self->{cost});
+		$str.=' @@ $'.sprintf('%0.2f',abs($self->{cost}));
 	    }
 	    $str.=' = '.$self->{assert}.' '.$commodity
                 if defined $self->{assert} && $self->{add_assert};
